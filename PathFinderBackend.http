@@ -1,0 +1,6 @@
+@PathFinderBackend_HostAddress = http://localhost:5249
+
+GET {{PathFinderBackend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
