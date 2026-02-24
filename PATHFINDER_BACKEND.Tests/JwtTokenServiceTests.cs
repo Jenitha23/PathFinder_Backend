@@ -34,6 +34,7 @@ public class JwtTokenServiceTests
         // check custom userId and fullName
         Assert.Contains(jwtToken.Claims, c => c.Type == "userId" && c.Value == "10");
         Assert.Contains(jwtToken.Claims, c => c.Type == "fullName" && c.Value == "Test Student");
+        Assert.Contains(jwtToken.Claims, c => c.Type == JwtRegisteredClaimNames.Jti && !string.IsNullOrWhiteSpace(c.Value));
     }
 
     [Fact]
@@ -64,5 +65,18 @@ public class JwtTokenServiceTests
         handler.ValidateToken(token, validationParams, out var validatedToken);
 
         Assert.NotNull(validatedToken);
+    }
+
+    [Fact]
+    public void ReadJtiAndExpiry_ReturnsJtiAndExpiry()
+    {
+        var config = BuildConfig();
+        var jwt = new JwtTokenService(config);
+
+        var token = jwt.CreateToken(userId: 15, email: "jti@student.com", role: "STUDENT", fullName: "Jti Student");
+        var result = jwt.ReadJtiAndExpiry(token);
+
+        Assert.False(string.IsNullOrWhiteSpace(result.jti));
+        Assert.NotNull(result.expiresUtc);
     }
 }
