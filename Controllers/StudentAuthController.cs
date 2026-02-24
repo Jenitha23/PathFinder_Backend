@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Data.SqlClient;
 using PATHFINDER_BACKEND.DTOs;
 using PATHFINDER_BACKEND.Models;
 using PATHFINDER_BACKEND.Repositories;
@@ -24,6 +26,8 @@ namespace PATHFINDER_BACKEND.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register(StudentRegisterRequest req)
         {
+            if (!ModelState.IsValid) return ValidationProblem(ModelState);
+
             if (string.IsNullOrWhiteSpace(req.FullName) ||
                 string.IsNullOrWhiteSpace(req.Email) ||
                 string.IsNullOrWhiteSpace(req.Password))
@@ -40,7 +44,15 @@ namespace PATHFINDER_BACKEND.Controllers
                 PasswordHash = _pwd.Hash(req.Password)
             };
 
-            var id = await _repo.CreateAsync(student);
+            int id;
+            try
+            {
+                id = await _repo.CreateAsync(student);
+            }
+            catch (SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+            {
+                return Conflict("Email already registered.");
+            }
 
             // optionally auto-login after register:
             var token = _jwt.CreateToken(id, email, "STUDENT", student.FullName);
@@ -58,6 +70,8 @@ namespace PATHFINDER_BACKEND.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login(StudentLoginRequest req)
         {
+            if (!ModelState.IsValid) return ValidationProblem(ModelState);
+
             if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
                 return BadRequest("Email and Password are required.");
 
@@ -78,6 +92,24 @@ namespace PATHFINDER_BACKEND.Controllers
                 Email = student.Email,
                 FullName = student.FullName
             });
+        }
+
+        [Authorize(Roles = "STUDENT")]
+        [HttpPost("logout")]
+        public IActionResult Logout([FromServices] TokenRevocationService revocationService)
+        {
+            var authHeader = Request.Headers.Authorization.ToString();
+            if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return Unauthorized("Authorization token missing.");
+
+            var token = authHeader["Bearer ".Length..].Trim();
+            var (jti, expiresUtc) = _jwt.ReadJtiAndExpiry(token);
+
+            if (string.IsNullOrWhiteSpace(jti) || expiresUtc == null)
+                return Unauthorized("Invalid token.");
+
+            revocationService.Revoke(jti, expiresUtc.Value.ToUniversalTime());
+            return Ok(new { message = "Logged out successfully." });
         }
     }
 }
