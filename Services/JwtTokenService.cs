@@ -21,11 +21,13 @@ namespace PATHFINDER_BACKEND.Services
             var issuer = _config["Jwt:Issuer"] ?? "PathFinder";
             var audience = _config["Jwt:Audience"] ?? "PathFinderUsers";
             var expiryMinutes = int.Parse(_config["Jwt:ExpiryMinutes"] ?? "120");
+            var jti = Guid.NewGuid().ToString();
 
             var claims = new List<Claim>
             {
                 new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, email),
+                new Claim(JwtRegisteredClaimNames.Jti, jti),
                 new Claim(ClaimTypes.Role, role),
                 new Claim("fullName", fullName),
                 new Claim("userId", userId.ToString())
@@ -43,6 +45,18 @@ namespace PATHFINDER_BACKEND.Services
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        public (string? jti, DateTime? expiresUtc) ReadJtiAndExpiry(string jwtToken)
+        {
+            if (string.IsNullOrWhiteSpace(jwtToken))
+            {
+                return (null, null);
+            }
+
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(jwtToken);
+            var jti = token.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Jti)?.Value;
+            return (jti, token.ValidTo);
         }
     }
 }

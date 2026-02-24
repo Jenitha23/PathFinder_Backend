@@ -18,6 +18,7 @@ builder.Services.AddSingleton<Db>();
 builder.Services.AddScoped<StudentRepository>();
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddSingleton<TokenRevocationService>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing in appsettings.json");
@@ -37,6 +38,26 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ClockSkew = TimeSpan.FromMinutes(1)
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                var jti = context.Principal?.FindFirst("jti")?.Value;
+                if (string.IsNullOrWhiteSpace(jti))
+                {
+                    context.Fail("Token missing jti.");
+                    return Task.CompletedTask;
+                }
+
+                var revocationService = context.HttpContext.RequestServices.GetRequiredService<TokenRevocationService>();
+                if (revocationService.IsRevoked(jti))
+                {
+                    context.Fail("Token has been revoked.");
+                }
+
+                return Task.CompletedTask;
+            }
         };
     });
 
