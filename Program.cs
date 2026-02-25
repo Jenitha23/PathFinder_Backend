@@ -19,6 +19,7 @@ builder.Services.AddScoped<StudentRepository>();
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddSingleton<TokenRevocationService>();
+builder.Services.AddScoped<CompanyRepository>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing in appsettings.json");
