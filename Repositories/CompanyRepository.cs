@@ -1,0 +1,85 @@
+using MySqlConnector;
+using PATHFINDER_BACKEND.Data;
+using PATHFINDER_BACKEND.Models;
+
+namespace PATHFINDER_BACKEND.Repositories
+{
+    public class CompanyRepository
+    {
+        private readonly Db _db;
+        public CompanyRepository(Db db) => _db = db;
+
+        public async Task<Company?> GetByEmailAsync(string email)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                SELECT id, company_name, email, password_hash, status, created_at
+                FROM companies
+                WHERE email = @email
+                LIMIT 1;";
+
+            await using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@email", email);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+
+            var idIdx = reader.GetOrdinal("id");
+            var nameIdx = reader.GetOrdinal("company_name");
+            var emailIdx = reader.GetOrdinal("email");
+            var hashIdx = reader.GetOrdinal("password_hash");
+            var statusIdx = reader.GetOrdinal("status");
+            var createdIdx = reader.GetOrdinal("created_at");
+
+            return new Company
+            {
+                Id = reader.GetInt32(idIdx),
+                CompanyName = reader.GetString(nameIdx),
+                Email = reader.GetString(emailIdx),
+                PasswordHash = reader.GetString(hashIdx),
+                Status = reader.GetString(statusIdx),
+                CreatedAt = reader.GetDateTime(createdIdx)
+            };
+        }
+
+        public async Task<int> CreateAsync(Company c)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                INSERT INTO companies (company_name, email, password_hash, status)
+                VALUES (@name, @email, @hash, @status);
+                SELECT LAST_INSERT_ID();";
+
+            await using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@name", c.CompanyName);
+            cmd.Parameters.AddWithValue("@email", c.Email);
+            cmd.Parameters.AddWithValue("@hash", c.PasswordHash);
+            cmd.Parameters.AddWithValue("@status", c.Status);
+
+            var idObj = await cmd.ExecuteScalarAsync();
+            return (idObj == null || idObj == DBNull.Value) ? 0 : (int)(UInt64)idObj;
+        }
+
+        public async Task<bool> UpdateStatusAsync(int companyId, string status)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                UPDATE companies
+                SET status = @status
+                WHERE id = @id;";
+
+            await using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@status", status);
+            cmd.Parameters.AddWithValue("@id", companyId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+    }
+}
