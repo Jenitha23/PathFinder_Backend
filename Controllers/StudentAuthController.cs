@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Data.SqlClient;
+using MySqlConnector;
 using PATHFINDER_BACKEND.DTOs;
 using PATHFINDER_BACKEND.Models;
 using PATHFINDER_BACKEND.Repositories;
@@ -49,7 +49,7 @@ namespace PATHFINDER_BACKEND.Controllers
             {
                 id = await _repo.CreateAsync(student);
             }
-            catch (SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+            catch (MySqlException ex) when (ex.Number == 1062)
             {
                 return Conflict("Email already registered.");
             }
