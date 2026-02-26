@@ -20,6 +20,7 @@ builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddSingleton<TokenRevocationService>();
 builder.Services.AddScoped<CompanyRepository>();
+builder.Services.AddScoped<AdminRepository>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing in appsettings.json");
@@ -101,5 +102,23 @@ app.MapGet("/", () => "PathFinder API is running!");
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now }));
+
+// Seed a default admin if it does not exist yet.
+using (var scope = app.Services.CreateScope())
+{
+    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var adminRepo = scope.ServiceProvider.GetRequiredService<AdminRepository>();
+    var pwd = scope.ServiceProvider.GetRequiredService<PasswordService>();
+
+    var seedEnabled = config.GetValue("AdminSeed:Enabled", true);
+    if (seedEnabled)
+    {
+        var seedFullName = (config["AdminSeed:FullName"] ?? "System Admin").Trim();
+        var seedEmail = (config["AdminSeed:Email"] ?? "admin@pathfinder.com").Trim().ToLowerInvariant();
+        var seedPassword = config["AdminSeed:Password"] ?? "Admin@123";
+
+        await adminRepo.EnsureSeedAdminAsync(seedFullName, seedEmail, pwd.Hash(seedPassword));
+    }
+}
 
 app.Run();

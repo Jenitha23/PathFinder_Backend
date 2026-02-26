@@ -25,7 +25,6 @@ namespace PATHFINDER_BACKEND.Repositories
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync()) return null;
 
-            // Use ordinal-based getters (most reliable)
             var idIdx = reader.GetOrdinal("id");
             var fullIdx = reader.GetOrdinal("full_name");
             var emailIdx = reader.GetOrdinal("email");
@@ -42,12 +41,39 @@ namespace PATHFINDER_BACKEND.Repositories
             };
         }
 
+        public async Task<List<Student>> GetAllAsync()
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                SELECT id, full_name, email, created_at
+                FROM students
+                ORDER BY id DESC;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            var students = new List<Student>();
+            while (await reader.ReadAsync())
+            {
+                students.Add(new Student
+                {
+                    Id = reader.GetInt32(reader.GetOrdinal("id")),
+                    FullName = reader.GetString(reader.GetOrdinal("full_name")),
+                    Email = reader.GetString(reader.GetOrdinal("email")),
+                    CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at"))
+                });
+            }
+
+            return students;
+        }
+
         public async Task<int> CreateAsync(Student s)
         {
             await using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
-            // SCOPE_IDENTITY() returns the last identity value inserted in this scope
             const string sql = @"
                 INSERT INTO students (full_name, email, password_hash)
                 VALUES (@full, @email, @hash);

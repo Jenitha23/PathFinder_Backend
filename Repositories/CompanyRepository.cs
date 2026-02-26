@@ -43,6 +43,35 @@ namespace PATHFINDER_BACKEND.Repositories
             };
         }
 
+        public async Task<List<Company>> GetAllAsync()
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                SELECT id, company_name, email, status, created_at
+                FROM companies
+                ORDER BY id DESC;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            var companies = new List<Company>();
+            while (await reader.ReadAsync())
+            {
+                companies.Add(new Company
+                {
+                    Id = reader.GetInt32(reader.GetOrdinal("id")),
+                    CompanyName = reader.GetString(reader.GetOrdinal("company_name")),
+                    Email = reader.GetString(reader.GetOrdinal("email")),
+                    Status = reader.GetString(reader.GetOrdinal("status")),
+                    CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at"))
+                });
+            }
+
+            return companies;
+        }
+
         public async Task<int> CreateAsync(Company c)
         {
             await using var conn = _db.CreateConnection();

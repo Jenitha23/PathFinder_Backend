@@ -33,6 +33,12 @@
   <ItemGroup>
   <!-- Exclude test project files from main backend compilation -->
   <Compile Remove="PATHFINDER_BACKEND.Tests\**\*.cs" />
-</ItemGroup>
+  <Content Remove="PATHFINDER_BACKEND.Tests\**\*" />
+  <None Remove="PATHFINDER_BACKEND.Tests\**\*" />
+  <EmbeddedResource Remove="PATHFINDER_BACKEND.Tests\**\*" />
+  <AdditionalFiles Remove="PATHFINDER_BACKEND.Tests\**\*" />
+  <UpToDateCheckInput Remove="PATHFINDER_BACKEND.Tests\**\*" />
+  <UpToDateCheckBuilt Remove="PATHFINDER_BACKEND.Tests\**\*" />
+  </ItemGroup>
 
 </Project>
