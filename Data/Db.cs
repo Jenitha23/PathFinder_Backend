@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Configuration;
-using MySqlConnector;
+using Microsoft.Data.SqlClient;
 
 namespace PATHFINDER_BACKEND.Data
 {
@@ -15,10 +15,10 @@ namespace PATHFINDER_BACKEND.Data
                       ?? throw new Exception("Missing ConnectionStrings:DefaultConnection or DB_CONNECTION_STRING");
         }
 
-        // Create MySQL connection
-        public MySqlConnection CreateConnection()
+        // Create SQL Server connection
+        public SqlConnection CreateConnection()
         {
-            return new MySqlConnection(_connStr);
+            return new SqlConnection(_connStr);
         }
     }
 }

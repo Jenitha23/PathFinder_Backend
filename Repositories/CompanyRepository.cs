@@ -1,4 +1,4 @@
-using MySqlConnector;
+using Microsoft.Data.SqlClient;
 using PATHFINDER_BACKEND.Data;
 using PATHFINDER_BACKEND.Models;
 
@@ -15,12 +15,11 @@ namespace PATHFINDER_BACKEND.Repositories
             await conn.OpenAsync();
 
             const string sql = @"
-                SELECT id, company_name, email, password_hash, status, created_at
+                SELECT TOP (1) id, company_name, email, password_hash, status, created_at
                 FROM companies
-                WHERE email = @email
-                LIMIT 1;";
+                WHERE email = @email;";
 
-            await using var cmd = new MySqlCommand(sql, conn);
+            await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@email", email);
 
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -52,16 +51,16 @@ namespace PATHFINDER_BACKEND.Repositories
             const string sql = @"
                 INSERT INTO companies (company_name, email, password_hash, status)
                 VALUES (@name, @email, @hash, @status);
-                SELECT LAST_INSERT_ID();";
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
-            await using var cmd = new MySqlCommand(sql, conn);
+            await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@name", c.CompanyName);
             cmd.Parameters.AddWithValue("@email", c.Email);
             cmd.Parameters.AddWithValue("@hash", c.PasswordHash);
             cmd.Parameters.AddWithValue("@status", c.Status);
 
             var idObj = await cmd.ExecuteScalarAsync();
-            return (idObj == null || idObj == DBNull.Value) ? 0 : (int)(UInt64)idObj;
+            return (idObj == null || idObj == DBNull.Value) ? 0 : Convert.ToInt32(idObj);
         }
 
         public async Task<bool> UpdateStatusAsync(int companyId, string status)
@@ -74,7 +73,7 @@ namespace PATHFINDER_BACKEND.Repositories
                 SET status = @status
                 WHERE id = @id;";
 
-            await using var cmd = new MySqlCommand(sql, conn);
+            await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@status", status);
             cmd.Parameters.AddWithValue("@id", companyId);
 

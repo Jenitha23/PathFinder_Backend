@@ -1,4 +1,4 @@
-using MySqlConnector;
+using Microsoft.Data.SqlClient;
 using PATHFINDER_BACKEND.Data;
 using PATHFINDER_BACKEND.Models;
 
@@ -15,12 +15,11 @@ namespace PATHFINDER_BACKEND.Repositories
             await conn.OpenAsync();
 
             const string sql = @"
-                SELECT id, full_name, email, password_hash, created_at
+                SELECT TOP (1) id, full_name, email, password_hash, created_at
                 FROM students
-                WHERE email = @email
-                LIMIT 1;";
+                WHERE email = @email;";
 
-            await using var cmd = new MySqlCommand(sql, conn);
+            await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@email", email);
 
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -52,15 +51,15 @@ namespace PATHFINDER_BACKEND.Repositories
             const string sql = @"
                 INSERT INTO students (full_name, email, password_hash)
                 VALUES (@full, @email, @hash);
-                SELECT LAST_INSERT_ID();";
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
-            await using var cmd = new MySqlCommand(sql, conn);
+            await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@full", s.FullName);
             cmd.Parameters.AddWithValue("@email", s.Email);
             cmd.Parameters.AddWithValue("@hash", s.PasswordHash);
 
             var idObj = await cmd.ExecuteScalarAsync();
-            return (idObj == null || idObj == DBNull.Value) ? 0 : (int)(UInt64)idObj;
+            return (idObj == null || idObj == DBNull.Value) ? 0 : Convert.ToInt32(idObj);
         }
     }
 }
