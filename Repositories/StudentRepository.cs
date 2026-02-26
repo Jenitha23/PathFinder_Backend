@@ -15,7 +15,7 @@ namespace PATHFINDER_BACKEND.Repositories
             await conn.OpenAsync();
 
             const string sql = @"
-                SELECT TOP 1 id, full_name, email, password_hash, created_at
+                SELECT TOP (1) id, full_name, email, password_hash, created_at
                 FROM students
                 WHERE email = @email;";
 
@@ -51,8 +51,7 @@ namespace PATHFINDER_BACKEND.Repositories
             const string sql = @"
                 INSERT INTO students (full_name, email, password_hash)
                 VALUES (@full, @email, @hash);
-
-                SELECT CAST(SCOPE_IDENTITY() AS int);";
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
             await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@full", s.FullName);
@@ -60,7 +59,7 @@ namespace PATHFINDER_BACKEND.Repositories
             cmd.Parameters.AddWithValue("@hash", s.PasswordHash);
 
             var idObj = await cmd.ExecuteScalarAsync();
-            return (idObj == null || idObj == DBNull.Value) ? 0 : (int)idObj;
+            return (idObj == null || idObj == DBNull.Value) ? 0 : Convert.ToInt32(idObj);
         }
     }
 }

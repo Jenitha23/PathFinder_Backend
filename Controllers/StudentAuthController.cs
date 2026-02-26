@@ -49,7 +49,7 @@ namespace PATHFINDER_BACKEND.Controllers
             {
                 id = await _repo.CreateAsync(student);
             }
-            catch (SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+            catch (SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
             {
                 return Conflict("Email already registered.");
             }
