@@ -12,4 +12,6 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:80
-      DB_CONNECTION_STRING: "Server=tcp:pathfinderdb.database.windows.net,1433;Initial Catalog=PathFinder;Persist Security Info=False;User ID=PathFinder;Password=DataBase@123;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+      ConnectionStrings__DefaultConnection: "Server=tcp:pathfinderserver.database.windows.net,1433;Initial Catalog=PathFinder;Persist Security Info=False;User ID=pathfinderdb;Password=DataBase@123;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+
+

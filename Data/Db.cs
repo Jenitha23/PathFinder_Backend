@@ -10,7 +10,7 @@ namespace PATHFINDER_BACKEND.Data
         public Db(IConfiguration config)
         {
             // Get connection string from env variable or appsettings.json
-            _connStr = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+            _connStr = Environment.GetEnvironmentVariable("DefaultConnection")
                       ?? config.GetConnectionString("DefaultConnection")
                       ?? throw new Exception("Missing ConnectionStrings:DefaultConnection or DB_CONNECTION_STRING");
         }
