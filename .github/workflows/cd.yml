@@ -25,3 +25,14 @@ jobs:
           docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
           docker push $IMAGE:latest
           docker push $IMAGE:${{ github.sha }}
+
+      - name: Azure Login
+  uses: azure/login@v2
+  with:
+    creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+- name: Deploy to Azure Web App
+  uses: azure/webapps-deploy@v3
+  with:
+    app-name: 'your-app-service-name'
+    images: '${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-backend:latest'
