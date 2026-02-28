@@ -8,50 +8,69 @@ using PATHFINDER_BACKEND.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container
+// Add MVC controllers + Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Register your app services (ADO.NET + Repos + Services)
+// Register app services (ADO.NET + Repositories + Services)
+// Db: connection provider
 builder.Services.AddSingleton<Db>();
+
+// Repositories: DB access
 builder.Services.AddScoped<StudentRepository>();
-builder.Services.AddSingleton<PasswordService>();
-builder.Services.AddSingleton<JwtTokenService>();
-builder.Services.AddSingleton<TokenRevocationService>();
 builder.Services.AddScoped<CompanyRepository>();
 builder.Services.AddScoped<AdminRepository>();
 
-// JWT Authentication
+// Services: stateless helpers (hashing, token creation, revocation tracking)
+builder.Services.AddSingleton<PasswordService>();
+builder.Services.AddSingleton<JwtTokenService>();
+
+// Token revocation is stored in-memory (sufficient for single-instance demo).
+builder.Services.AddSingleton<TokenRevocationService>();
+
+// JWT Authentication settings
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing in appsettings.json");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "PathFinder";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "PathFinderUsers";
 
+// Configure JWT validation middleware
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
+            // Validate issuer/audience/signature/lifetime for security
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+
+            // Allow small server/client time mismatch
             ClockSkew = TimeSpan.FromMinutes(1)
         };
+
+        // Custom logic after token signature is validated:
+        // - check whether token has been revoked (logout)
         options.Events = new JwtBearerEvents
         {
             OnTokenValidated = context =>
             {
+                // JTI claim uniquely identifies the token.
+                // Your JwtTokenService uses JwtRegisteredClaimNames.Jti ("jti")
                 var jti = context.Principal?.FindFirst("jti")?.Value;
+
                 if (string.IsNullOrWhiteSpace(jti))
                 {
                     context.Fail("Token missing jti.");
                     return Task.CompletedTask;
                 }
 
+                // If token is revoked, block access even if not expired
                 var revocationService = context.HttpContext.RequestServices.GetRequiredService<TokenRevocationService>();
                 if (revocationService.IsRevoked(jti))
                 {
@@ -65,7 +84,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// Add CORS
+// Add CORS (AllowAll policy is fine for development/demo)
+// For production, lock down origins and headers.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
@@ -79,7 +99,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
+// Swagger UI only in Development environment
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -88,10 +108,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// CORS should come before auth (good practice)
+// CORS should be before auth middleware
 app.UseCors("AllowAll");
 
-// Authentication MUST come before Authorization
+// Authentication MUST run before Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -100,10 +120,11 @@ app.MapControllers();
 // Root endpoint
 app.MapGet("/", () => "PathFinder API is running!");
 
-// Health check endpoint
+// Health endpoint for monitoring/testing
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now }));
 
-// Seed a default admin if it does not exist yet.
+// Seed default admin if enabled (idempotent)
+// Ensures at least one admin exists for login testing.
 using (var scope = app.Services.CreateScope())
 {
     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -117,6 +138,7 @@ using (var scope = app.Services.CreateScope())
         var seedEmail = (config["AdminSeed:Email"] ?? "admin@pathfinder.com").Trim().ToLowerInvariant();
         var seedPassword = config["AdminSeed:Password"] ?? "Admin@123";
 
+        // Hash password before inserting (never store plain password)
         await adminRepo.EnsureSeedAdminAsync(seedFullName, seedEmail, pwd.Hash(seedPassword));
     }
 }

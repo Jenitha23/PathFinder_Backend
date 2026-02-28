@@ -2,6 +2,11 @@ using System.Collections.Concurrent;
 
 namespace PATHFINDER_BACKEND.Services
 {
+    /// <summary>
+    /// Tracks revoked JWT JTIs (for logout).
+    /// NOTE: This is in-memory and will reset when the app restarts.
+    /// For production or multi-instance deployments, use a shared store (Redis/DB).
+    /// </summary>
     public class TokenRevocationService
     {
         private readonly ConcurrentDictionary<string, DateTime> _revokedJtis = new();
@@ -20,6 +25,7 @@ namespace PATHFINDER_BACKEND.Services
 
         private void CleanupExpired()
         {
+            // Keep dictionary small by removing tokens already expired.
             var now = DateTime.UtcNow;
             foreach (var pair in _revokedJtis)
             {

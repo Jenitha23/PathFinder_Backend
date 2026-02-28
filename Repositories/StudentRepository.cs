@@ -4,16 +4,25 @@ using PATHFINDER_BACKEND.Models;
 
 namespace PATHFINDER_BACKEND.Repositories
 {
+    /// <summary>
+    /// Repository = database access layer.
+    /// Keeps SQL isolated from controllers/services (clean architecture).
+    /// </summary>
     public class StudentRepository
     {
         private readonly Db _db;
         public StudentRepository(Db db) => _db = db;
 
+        /// <summary>
+        /// Fetch a student by email.
+        /// Returns null if no user exists.
+        /// </summary>
         public async Task<Student?> GetByEmailAsync(string email)
         {
             await using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
+            // Parameterized query prevents SQL injection.
             const string sql = @"
                 SELECT TOP (1) id, full_name, email, password_hash, created_at
                 FROM students
@@ -25,6 +34,7 @@ namespace PATHFINDER_BACKEND.Repositories
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync()) return null;
 
+            // Ordinals are used for safer access by column name.
             var idIdx = reader.GetOrdinal("id");
             var fullIdx = reader.GetOrdinal("full_name");
             var emailIdx = reader.GetOrdinal("email");
@@ -41,11 +51,16 @@ namespace PATHFINDER_BACKEND.Repositories
             };
         }
 
+        /// <summary>
+        /// Returns all students (without password hash).
+        /// Useful for admin views or debugging (restrict this endpoint in controllers if exposed).
+        /// </summary>
         public async Task<List<Student>> GetAllAsync()
         {
             await using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
+            // Password hash is intentionally not selected for safety.
             const string sql = @"
                 SELECT id, full_name, email, created_at
                 FROM students
@@ -69,6 +84,9 @@ namespace PATHFINDER_BACKEND.Repositories
             return students;
         }
 
+        /// <summary>
+        /// Creates a new student record and returns the generated ID.
+        /// </summary>
         public async Task<int> CreateAsync(Student s)
         {
             await using var conn = _db.CreateConnection();

@@ -4,16 +4,25 @@ using PATHFINDER_BACKEND.Models;
 
 namespace PATHFINDER_BACKEND.Repositories
 {
+    /// <summary>
+    /// Handles all database operations related to Company entities.
+    /// Keeps SQL logic separated from controllers (clean architecture principle).
+    /// </summary>
     public class CompanyRepository
     {
         private readonly Db _db;
         public CompanyRepository(Db db) => _db = db;
 
+        /// <summary>
+        /// Fetch a company by email.
+        /// Returns null if no matching record exists.
+        /// </summary>
         public async Task<Company?> GetByEmailAsync(string email)
         {
             await using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
+            // Parameterized query prevents SQL injection.
             const string sql = @"
                 SELECT TOP (1) id, company_name, email, password_hash, status, created_at
                 FROM companies
@@ -25,6 +34,7 @@ namespace PATHFINDER_BACKEND.Repositories
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync()) return null;
 
+            // Using column ordinals improves performance and avoids column-order dependency.
             var idIdx = reader.GetOrdinal("id");
             var nameIdx = reader.GetOrdinal("company_name");
             var emailIdx = reader.GetOrdinal("email");
@@ -43,6 +53,10 @@ namespace PATHFINDER_BACKEND.Repositories
             };
         }
 
+        /// <summary>
+        /// Returns all companies (excluding password hash).
+        /// Useful for admin approval dashboard.
+        /// </summary>
         public async Task<List<Company>> GetAllAsync()
         {
             await using var conn = _db.CreateConnection();
@@ -72,6 +86,10 @@ namespace PATHFINDER_BACKEND.Repositories
             return companies;
         }
 
+        /// <summary>
+        /// Creates a new company record and returns generated ID.
+        /// Status is typically PENDING_APPROVAL.
+        /// </summary>
         public async Task<int> CreateAsync(Company c)
         {
             await using var conn = _db.CreateConnection();
@@ -92,6 +110,9 @@ namespace PATHFINDER_BACKEND.Repositories
             return (idObj == null || idObj == DBNull.Value) ? 0 : Convert.ToInt32(idObj);
         }
 
+        /// <summary>
+        /// Updates company approval status (used by Admin).
+        /// </summary>
         public async Task<bool> UpdateStatusAsync(int companyId, string status)
         {
             await using var conn = _db.CreateConnection();

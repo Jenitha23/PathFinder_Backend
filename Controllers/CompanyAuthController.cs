@@ -22,23 +22,35 @@ namespace PATHFINDER_BACKEND.Controllers
             _jwt = jwt;
         }
 
+        /// <summary>
+        /// Simple email format validation using regex.
+        /// Used because Company DTO does not use DataAnnotations.
+        /// </summary>
         private static bool IsValidEmail(string email)
         {
             return Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
         }
 
+        /// <summary>
+        /// Registers a new company account.
+        /// Company cannot log in until approved by admin.
+        /// </summary>
         [HttpPost("register")]
         public async Task<IActionResult> Register(CompanyRegisterRequest req)
         {
+            // Manual validation since no DataAnnotations are used.
             if (string.IsNullOrWhiteSpace(req.CompanyName) ||
                 string.IsNullOrWhiteSpace(req.Email) ||
                 string.IsNullOrWhiteSpace(req.Password))
                 return BadRequest("CompanyName, Email and Password are required.");
 
             var email = req.Email.Trim().ToLower();
+
+            // Prevent invalid email formats.
             if (!IsValidEmail(email))
                 return BadRequest("Invalid email format.");
 
+            // Check if email already exists.
             var existing = await _repo.GetByEmailAsync(email);
             if (existing != null) return Conflict("Email already registered.");
 
@@ -46,14 +58,18 @@ namespace PATHFINDER_BACKEND.Controllers
             {
                 CompanyName = req.CompanyName.Trim(),
                 Email = email,
+
+                // Password securely hashed before storing.
                 PasswordHash = _pwd.Hash(req.Password),
+
+                // New companies require admin approval.
                 Status = "PENDING_APPROVAL"
             };
 
             var id = await _repo.CreateAsync(company);
             if (id <= 0) return StatusCode(500, "Failed to create company.");
 
-            // Approval workflow: don't issue token until approved
+            // No JWT issued here — approval workflow enforced.
             return Ok(new
             {
                 message = "Company registered successfully. Waiting for admin approval.",
@@ -64,6 +80,10 @@ namespace PATHFINDER_BACKEND.Controllers
             });
         }
 
+        /// <summary>
+        /// Authenticates a company.
+        /// Only APPROVED companies can log in.
+        /// </summary>
         [HttpPost("login")]
         public async Task<IActionResult> Login(CompanyLoginRequest req)
         {
@@ -72,12 +92,15 @@ namespace PATHFINDER_BACKEND.Controllers
 
             var email = req.Email.Trim().ToLower();
             var company = await _repo.GetByEmailAsync(email);
-            if (company == null) return Unauthorized("Invalid credentials.");
 
+            if (company == null)
+                return Unauthorized("Invalid credentials.");
+
+            // Verify password using BCrypt.
             if (!_pwd.Verify(req.Password, company.PasswordHash))
                 return Unauthorized("Invalid credentials.");
 
-            // Block login until approved
+            // Approval check before issuing JWT.
             if (!string.Equals(company.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
                 return Unauthorized($"Company account is not approved yet. Current status: {company.Status}");
 

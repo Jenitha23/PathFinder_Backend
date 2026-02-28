@@ -4,16 +4,25 @@ using PATHFINDER_BACKEND.Models;
 
 namespace PATHFINDER_BACKEND.Repositories
 {
+    /// <summary>
+    /// Repository layer for Admin operations.
+    /// Encapsulates all SQL queries and keeps controllers clean.
+    /// </summary>
     public class AdminRepository
     {
         private readonly Db _db;
         public AdminRepository(Db db) => _db = db;
 
+        /// <summary>
+        /// Fetch an admin user by email.
+        /// Returns null if admin does not exist.
+        /// </summary>
         public async Task<Admin?> GetByEmailAsync(string email)
         {
             await using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
+            // Parameterized query prevents SQL injection.
             const string sql = @"
                 SELECT TOP 1 id, full_name, email, password_hash, created_at
                 FROM admins
@@ -35,6 +44,10 @@ namespace PATHFINDER_BACKEND.Repositories
             };
         }
 
+        /// <summary>
+        /// Fetch an admin user by ID.
+        /// Useful for "me" profile endpoint.
+        /// </summary>
         public async Task<Admin?> GetByIdAsync(int id)
         {
             await using var conn = _db.CreateConnection();
@@ -61,6 +74,10 @@ namespace PATHFINDER_BACKEND.Repositories
             };
         }
 
+        /// <summary>
+        /// Create a new admin and return the generated identity ID.
+        /// Typically used only for seeding or internal admin creation.
+        /// </summary>
         public async Task<int> CreateAsync(Admin a)
         {
             await using var conn = _db.CreateConnection();
@@ -80,6 +97,10 @@ namespace PATHFINDER_BACKEND.Repositories
             return (idObj == null || idObj == DBNull.Value) ? 0 : Convert.ToInt32(idObj);
         }
 
+        /// <summary>
+        /// Update admin profile fields (full name + email).
+        /// Ensures controller handles email uniqueness rules.
+        /// </summary>
         public async Task<bool> UpdateProfileAsync(int adminId, string fullName, string email)
         {
             await using var conn = _db.CreateConnection();
@@ -99,6 +120,10 @@ namespace PATHFINDER_BACKEND.Repositories
             return rows > 0;
         }
 
+        /// <summary>
+        /// Update stored password hash for an admin.
+        /// Called after verifying current password and hashing new password.
+        /// </summary>
         public async Task<bool> UpdatePasswordHashAsync(int adminId, string passwordHash)
         {
             await using var conn = _db.CreateConnection();
@@ -117,11 +142,16 @@ namespace PATHFINDER_BACKEND.Repositories
             return rows > 0;
         }
 
+        /// <summary>
+        /// Ensures a default admin exists (seed admin).
+        /// Used at application startup.
+        /// </summary>
         public async Task EnsureSeedAdminAsync(string fullName, string email, string passwordHash)
         {
             await using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
+            // Idempotent seed: inserts only if admin email doesn't exist.
             const string sql = @"
                 IF NOT EXISTS (SELECT 1 FROM admins WHERE email = @email)
                 BEGIN
