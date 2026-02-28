@@ -14,6 +14,36 @@ namespace PATHFINDER_BACKEND.Repositories
         public StudentRepository(Db db) => _db = db;
 
         /// <summary>
+        /// Fetch a student by ID.
+        /// Returns null if no user exists.
+        /// </summary>
+        public async Task<Student?> GetByIdAsync(int id)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                SELECT TOP (1) id, full_name, email, password_hash, created_at
+                FROM students
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+
+            return new Student
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("id")),
+                FullName = reader.GetString(reader.GetOrdinal("full_name")),
+                Email = reader.GetString(reader.GetOrdinal("email")),
+                PasswordHash = reader.GetString(reader.GetOrdinal("password_hash")),
+                CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at"))
+            };
+        }
+
+        /// <summary>
         /// Fetch a student by email.
         /// Returns null if no user exists.
         /// </summary>
@@ -104,6 +134,68 @@ namespace PATHFINDER_BACKEND.Repositories
 
             var idObj = await cmd.ExecuteScalarAsync();
             return (idObj == null || idObj == DBNull.Value) ? 0 : Convert.ToInt32(idObj);
+        }
+
+        /// <summary>
+        /// Updates student profile fields (full name + email).
+        /// </summary>
+        public async Task<bool> UpdateProfileAsync(int studentId, string fullName, string email)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                UPDATE students
+                SET full_name = @full, email = @email
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@full", fullName);
+            cmd.Parameters.AddWithValue("@email", email);
+            cmd.Parameters.AddWithValue("@id", studentId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
+        /// Updates student password hash.
+        /// </summary>
+        public async Task<bool> UpdatePasswordHashAsync(int studentId, string passwordHash)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                UPDATE students
+                SET password_hash = @hash
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@hash", passwordHash);
+            cmd.Parameters.AddWithValue("@id", studentId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
+        /// Deletes a student by ID.
+        /// </summary>
+        public async Task<bool> DeleteByIdAsync(int studentId)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                DELETE FROM students
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", studentId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
         }
     }
 }
