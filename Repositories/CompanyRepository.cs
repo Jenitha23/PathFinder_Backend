@@ -14,6 +14,37 @@ namespace PATHFINDER_BACKEND.Repositories
         public CompanyRepository(Db db) => _db = db;
 
         /// <summary>
+        /// Fetch a company by ID.
+        /// Returns null if no matching record exists.
+        /// </summary>
+        public async Task<Company?> GetByIdAsync(int companyId)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                SELECT TOP (1) id, company_name, email, password_hash, status, created_at
+                FROM companies
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", companyId);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+
+            return new Company
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("id")),
+                CompanyName = reader.GetString(reader.GetOrdinal("company_name")),
+                Email = reader.GetString(reader.GetOrdinal("email")),
+                PasswordHash = reader.GetString(reader.GetOrdinal("password_hash")),
+                Status = reader.GetString(reader.GetOrdinal("status")),
+                CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at"))
+            };
+        }
+
+        /// <summary>
         /// Fetch a company by email.
         /// Returns null if no matching record exists.
         /// </summary>
@@ -125,6 +156,68 @@ namespace PATHFINDER_BACKEND.Repositories
 
             await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@status", status);
+            cmd.Parameters.AddWithValue("@id", companyId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
+        /// Updates company profile fields (name + email).
+        /// </summary>
+        public async Task<bool> UpdateProfileAsync(int companyId, string companyName, string email)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                UPDATE companies
+                SET company_name = @name, email = @email
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@name", companyName);
+            cmd.Parameters.AddWithValue("@email", email);
+            cmd.Parameters.AddWithValue("@id", companyId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
+        /// Updates company password hash.
+        /// </summary>
+        public async Task<bool> UpdatePasswordHashAsync(int companyId, string passwordHash)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                UPDATE companies
+                SET password_hash = @hash
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@hash", passwordHash);
+            cmd.Parameters.AddWithValue("@id", companyId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
+        /// Deletes a company by ID.
+        /// </summary>
+        public async Task<bool> DeleteByIdAsync(int companyId)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                DELETE FROM companies
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@id", companyId);
 
             var rows = await cmd.ExecuteNonQueryAsync();

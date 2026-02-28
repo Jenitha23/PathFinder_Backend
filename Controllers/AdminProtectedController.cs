@@ -175,6 +175,20 @@ namespace PATHFINDER_BACKEND.Controllers
         }
 
         /// <summary>
+        /// Deletes currently authenticated admin account.
+        /// </summary>
+        [HttpDelete("account")]
+        public async Task<IActionResult> DeleteMyAccount()
+        {
+            if (!TryGetCurrentAdminId(out var adminId)) return Unauthorized("Invalid token claims.");
+
+            var deleted = await _adminRepo.DeleteByIdAsync(adminId);
+            if (!deleted) return NotFound("Admin not found.");
+
+            return Ok(new { message = "Admin account deleted successfully." });
+        }
+
+        /// <summary>
         /// Extracts current admin ID from JWT claims.
         /// Token creation includes "userId" claim for easy lookup.
         /// </summary>

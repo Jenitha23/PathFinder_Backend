@@ -143,6 +143,25 @@ namespace PATHFINDER_BACKEND.Repositories
         }
 
         /// <summary>
+        /// Deletes an admin user by ID.
+        /// </summary>
+        public async Task<bool> DeleteByIdAsync(int adminId)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                DELETE FROM admins
+                WHERE id = @id;";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", adminId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
         /// Ensures a default admin exists (seed admin).
         /// Used at application startup.
         /// </summary>
