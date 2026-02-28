@@ -28,6 +28,7 @@ namespace PATHFINDER_BACKEND.Controllers
         /// Protected endpoint accessible only to authenticated COMPANY role.
         /// Demonstrates role-based authorization using JWT.
         /// </summary>
+        [Authorize(Roles = "COMPANY")]
         [HttpGet("me")]
         public IActionResult Me()
         {

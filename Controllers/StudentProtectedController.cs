@@ -23,6 +23,7 @@ namespace PATHFINDER_BACKEND.Controllers
         /// Sample protected endpoint.
         /// Demonstrates role-based authorization using JWT role claim.
         /// </summary>
+        [Authorize(Roles = "STUDENT")]
         [HttpGet("me")]
         public IActionResult Me()
         {
