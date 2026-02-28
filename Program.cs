@@ -99,8 +99,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Swagger UI only in Development environment
-if (app.Environment.IsDevelopment())
+// Swagger UI in Development and Production environments
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
