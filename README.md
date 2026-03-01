@@ -41,33 +41,35 @@ Developer → GitHub → GitHub Actions → Docker → Docker Hub → Azure Web 
 
 ## Repository Structure
 ```
-PathFinder_Backend/
-│
-├── src/                        # Application source code
-│   └── PathFinder.API/
-│       ├── Controllers/
-│       ├── Models/
-│       ├── DTOs/
-│       ├── Services/
-│       ├── Repositories/
-│       ├── Data/
-│       ├── Middleware/
-│       ├── Program.cs
-│       └── appsettings.json
-│
-│                 
-│── Dockerfile
-│── docker-compose.yml
+PATHFINDER_BACKEND/
 │
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml
-│       └── cd.yml
 │
+├── bin/
+├── obj/
 │
-           
+├── Controllers/
+├── Data/
+├── Databases/
+├── DTOs/
+├── Models/
+├── Repositories/
+├── Services/
+├── Properties/
+│
+├── .dockerignore
 ├── .gitignore
-├── README.md
+├── appsettings.json
+├── docker-compose.yml
+├── Dockerfile
+│
+├── PathFinder_Backend.sln
+├── PathFinderBackend.csproj
+├── PathFinderBackend.http
+├── Program.cs
+│
+└── README.md
 ```
 
 
