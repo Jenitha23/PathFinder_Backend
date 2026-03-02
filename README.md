@@ -1,23 +1,41 @@
-# PathFinder – Smart Internship & Job Management System (Backend)
+# PathFinder – Smart Internship Management System (Backend)
 
-## 📋 Description
+## Project Overview
+PathFinder is a cloud-based Smart Internship Management System developed to connect students, companies, and administrators through a centralized internship management platform.
 
-The PathFinder Backend is a RESTful API developed using **ASP.NET Core Web API** to support the frontend application.
+This repository contains the backend REST API developed using ASP.NET Core Web API. The system implements secure authentication, role-based authorization, automated CI/CD pipelines, and cloud deployment using modern DevOps practices.
 
-It provides secure authentication, role-based authorization, and data management for **Students, Companies, and Administrators.** The backend communicates with a MySQL database hosted on Azure and exposes APIs for user management, job management, and analytics.
+---
 
-## 🛠️ Technologies Used
+## System Architecture
+```
+Frontend (React – Vercel)
+        ↓
+Backend API (.NET Web API – Docker Container)
+        ↓
+Azure Web App (Cloud Hosting)
+        ↓
+Azure SQL Database
 
-* ASP.NET Core Web API (.NET 8)
-* C#
-* JWT Authentication
-* BCrypt Password Hashing
-* ADO.NET
-* MySQL (Azure Database)
-* Swagger (API Documentation)
+CI/CD Workflow:
+Developer → GitHub → GitHub Actions → Docker → Docker Hub → Azure Web App → Live Application
+```
+---
 
+## Technology Stack
 
-## ✨ Features
+| Category | Technology |
+|-----------|------------|
+| Backend Framework | ASP.NET Core Web API (.NET 8) |
+| Programming Language | C# |
+| Authentication | JWT Authentication |
+| Password Security | BCrypt |
+| Database | Azure SQL Database |
+| Containerization | Docker |
+| CI/CD | GitHub Actions |
+| Container Registry | Docker Hub |
+| Cloud Platform | Microsoft Azure |
+| API Documentation | Swagger |
 
 * Student, Company, and Admin Authentication
 * Secure Login & Registration APIs
