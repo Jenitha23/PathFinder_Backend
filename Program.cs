@@ -124,7 +124,7 @@ app.MapGet("/", () => "PathFinder API is running!");
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now }));
 
 // Seed default admin if enabled (idempotent)
-// Ensures at least one admin exists for login testing.
+// Credentials should be provided via environment variables to avoid hardcoding secrets.
 using (var scope = app.Services.CreateScope())
 {
     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -135,11 +135,21 @@ using (var scope = app.Services.CreateScope())
     if (seedEnabled)
     {
         var seedFullName = (config["AdminSeed:FullName"] ?? "System Admin").Trim();
-        var seedEmail = (config["AdminSeed:Email"] ?? "admin@pathfinder.com").Trim().ToLowerInvariant();
-        var seedPassword = config["AdminSeed:Password"] ?? "Admin@123";
+        var seedEmail = (Environment.GetEnvironmentVariable("ADMIN_SEED_EMAIL") ?? config["AdminSeed:Email"] ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant();
+        var seedPassword = Environment.GetEnvironmentVariable("ADMIN_SEED_PASSWORD");
 
-        // Hash password before inserting (never store plain password)
-        await adminRepo.EnsureSeedAdminAsync(seedFullName, seedEmail, pwd.Hash(seedPassword));
+        if (string.IsNullOrWhiteSpace(seedEmail) || string.IsNullOrWhiteSpace(seedPassword))
+        {
+            app.Logger.LogWarning(
+                "Admin seed skipped. Set ADMIN_SEED_EMAIL and ADMIN_SEED_PASSWORD environment variables when AdminSeed:Enabled is true.");
+        }
+        else
+        {
+            // Hash password before inserting (never store plain password)
+            await adminRepo.EnsureSeedAdminAsync(seedFullName, seedEmail, pwd.Hash(seedPassword));
+        }
     }
 }
 
