@@ -37,9 +37,145 @@ Developer → GitHub → GitHub Actions → Docker → Docker Hub → Azure Web 
 | Cloud Platform | Microsoft Azure |
 | API Documentation | Swagger |
 
-* Student, Company, and Admin Authentication
-* Secure Login & Registration APIs
-* JWT-Based Authorization
-* Password Encryption
-* Role-Based Access Control
-* RESTful API Architecture*
+---
+
+## Repository Structure
+```
+PATHFINDER_BACKEND/
+│
+├── .github/
+│   └── workflows/
+│
+├── bin/
+├── obj/
+│
+├── Controllers/
+├── Data/
+├── Databases/
+├── DTOs/
+├── Models/
+├── Repositories/
+├── Services/
+├── Properties/
+│
+├── .dockerignore
+├── .gitignore
+├── appsettings.json
+├── docker-compose.yml
+├── Dockerfile
+│
+├── PathFinder_Backend.sln
+├── PathFinderBackend.csproj
+├── PathFinderBackend.http
+├── Program.cs
+│
+└── README.md
+```
+
+
+---
+
+## Branch Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| main | Production deployment |
+| develop | Integration testing |
+| QA | Testing |
+| devops | CI/CD configuration |
+
+This branching strategy ensures controlled development and stable releases.
+
+---
+
+## Local Development Setup
+
+### Prerequisites
+- .NET SDK 8+
+- Docker Desktop
+- Git
+- Azure SQL Database access
+
+---
+
+### Clone Repository
+
+```bash
+git clone https://github.com/Jenitha23/PathFinder_Backend.git
+cd PathFinder_Backend
+Run Application (Without Docker)
+dotnet restore
+dotnet build
+dotnet run
+```
+Application URL:   http://localhost:5249
+
+Swagger Documentation: http://localhost:5249/swagger
+
+Environment Configuration
+Sensitive credentials are managed using environment variables.
+
+Configure locally or in Azure Web App:
+- ConnectionStrings__DefaultConnection=<Azure SQL Connection String>
+- Jwt__Key=<Secret Key>
+- Jwt__Issuer=PathFinder
+- Jwt__Audience=PathFinderUsers
+
+Docker Containerization
+Build Docker Image
+```
+docker build -t pathfinder-backend .
+```
+Run Docker Container
+```
+docker run -p 8080:8080 pathfinder-backend
+```
+Docker ensures consistent environments across development, testing, and production.
+
+---
+
+### CI/CD Pipeline (GitHub Actions)
+# Continuous Integration (CI)
+      Triggered on code push:
+      - Source checkout
+      - Build validation
+      - Unit testing
+      - Docker image build
+
+# Continuous Deployment (CD)
+      Triggered when code is merged into main branch:
+      - Docker image built automatically
+      - Image pushed to Docker Hub
+      - Azure Web App pulls latest container
+      - Backend redeployed automatically
+
+# Pipeline location:
+      - .github/workflows/
+
+---
+      
+## Cloud Deployment
+Backend Hosting
+- Azure Web App (Container-based deployment)
+- Docker Hub stores versioned images
+
+Database
+- Azure SQL Database with secure connectivity
+
+Security Implementation
+- JWT-based authentication
+- Role-based authorization (ADMIN / STUDENT / COMPANY)
+- BCrypt password hashing
+
+GitHub Secrets for credentials
+- Secure environment variable management
+- No sensitive data stored in source code
+
+---
+
+## API Documentation
+- Swagger UI: "https://pathfinder-fqgwf0e6bvc2cmbq.southeastasia-01.azurewebsites.net/swagger"
+
+---
+Contributors:  PathFinder Development Team
+----
