@@ -5,3 +5,6 @@ obj/
 
 # Local development settings (secrets)
 appsettings.Development.json
+
+#upload
+Uploads/
