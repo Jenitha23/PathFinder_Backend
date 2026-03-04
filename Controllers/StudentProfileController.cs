@@ -29,7 +29,7 @@ namespace PATHFINDER_BACKEND.Controllers
             if (studentId == null) return Unauthorized("Invalid token: missing userId.");
 
             var repo = new StudentProfileRepository(_db);
-            await repo.EnsureTableAsync();
+            await repo.EnsureTableAndColumnsAsync();
 
             var profile = await repo.GetStudentProfileAsync(studentId.Value);
             if (profile == null) return NotFound("Student not found.");
@@ -37,7 +37,7 @@ namespace PATHFINDER_BACKEND.Controllers
             return Ok(profile);
         }
 
-        // ✅ PUT /api/student/profile (multipart/form-data)
+        // ✅ PUT /api/student/profile/update-v2 (multipart/form-data)
         [HttpPut("update-v2")]
         [Authorize(Roles = "STUDENT")]
         [RequestSizeLimit(10 * 1024 * 1024)] // 10MB
@@ -79,15 +79,12 @@ namespace PATHFINDER_BACKEND.Controllers
             }
 
             var repo = new StudentProfileRepository(_db);
-            await repo.EnsureTableAsync();
 
-            await repo.UpsertStudentProfileAsync(
-                studentId.Value,
-                req.Skills?.Trim(),
-                req.Education?.Trim(),
-                req.Experience?.Trim(),
-                savedCvPath
-            );
+            // ✅ IMPORTANT: use the new method (safe migration)
+            await repo.EnsureTableAndColumnsAsync();
+
+            // ✅ IMPORTANT: use the new upsert method (saves all fields)
+            await repo.UpsertStudentProfileAsync(studentId.Value, req, savedCvPath);
 
             return Ok(new
             {
