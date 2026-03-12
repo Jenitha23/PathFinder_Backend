@@ -4,9 +4,15 @@ on:
   push:
     branches:
       - "SCRUM-*"
+      - Dev
+      - QA
+      - DevOps
   pull_request:
     branches:
+      - Dev
+      - QA
       - main
+  
 
 jobs:
   build-test:
