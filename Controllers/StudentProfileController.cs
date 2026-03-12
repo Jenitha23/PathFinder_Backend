@@ -20,7 +20,7 @@ namespace PATHFINDER_BACKEND.Controllers
             _env = env;
         }
 
-        // ✅ GET /api/student/profile
+        //  GET /api/student/profile
         [HttpGet]
         [Authorize(Roles = "STUDENT")]
         public async Task<IActionResult> GetProfile()
@@ -37,7 +37,7 @@ namespace PATHFINDER_BACKEND.Controllers
             return Ok(profile);
         }
 
-        // ✅ PUT /api/student/profile/update-v2 (multipart/form-data)
+        // PUT /api/student/profile/update-v2 (multipart/form-data)
         [HttpPut("update-v2")]
         [Authorize(Roles = "STUDENT")]
         [RequestSizeLimit(10 * 1024 * 1024)] // 10MB
@@ -50,11 +50,11 @@ namespace PATHFINDER_BACKEND.Controllers
             string? savedCvPath = null;
             if (req.CvFile != null && req.CvFile.Length > 0)
             {
-                // ✅ file size check (10MB max)
+                // file size check (10MB max)
                 if (req.CvFile.Length > 10 * 1024 * 1024)
                     return BadRequest("CV file is too large. Max 10MB.");
 
-                // ✅ file type check (PDF/DOC/DOCX)
+                // file type check (PDF/DOC/DOCX)
                 var allowedExt = new[] { ".pdf", ".doc", ".docx" };
                 var ext = Path.GetExtension(req.CvFile.FileName).ToLowerInvariant();
 
@@ -80,10 +80,10 @@ namespace PATHFINDER_BACKEND.Controllers
 
             var repo = new StudentProfileRepository(_db);
 
-            // ✅ IMPORTANT: use the new method (safe migration)
+            // IMPORTANT: use the new method (safe migration)
             await repo.EnsureTableAndColumnsAsync();
 
-            // ✅ IMPORTANT: use the new upsert method (saves all fields)
+            //  IMPORTANT: use the new upsert method (saves all fields)
             await repo.UpsertStudentProfileAsync(studentId.Value, req, savedCvPath);
 
             return Ok(new

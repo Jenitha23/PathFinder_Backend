@@ -13,7 +13,7 @@ namespace PATHFINDER_BACKEND.Repositories
             _db = db;
         }
 
-        // ✅ Create table if not exists + add missing columns (SQL Server safe migration)
+        // Create table if not exists + add missing columns (SQL Server safe migration)
         public async Task EnsureTableAndColumnsAsync()
         {
             var sql = @"
@@ -74,7 +74,7 @@ BEGIN
     );
 END;
 
--- ✅ Add missing columns safely if table already exists
+--  Add missing columns safely if table already exists
 IF COL_LENGTH('dbo.student_profiles', 'headline') IS NULL ALTER TABLE dbo.student_profiles ADD headline NVARCHAR(150) NULL;
 IF COL_LENGTH('dbo.student_profiles', 'about_me') IS NULL ALTER TABLE dbo.student_profiles ADD about_me NVARCHAR(MAX) NULL;
 
@@ -229,7 +229,7 @@ WHERE s.id = @studentId;
             };
         }
 
-        // ✅ Upsert profile row (insert or update) with all fields
+        //  Upsert profile row (insert or update) with all fields
         public async Task UpsertStudentProfileAsync(int studentId, StudentProfileUpdateRequest req, string? cvUrl)
         {
             var sql = @"
