@@ -12,13 +12,13 @@ namespace PATHFINDER_BACKEND.Controllers
     public class StudentProfileController : ControllerBase
     {
         private readonly Db _db;
-        private readonly IWebHostEnvironment _env;
+        private readonly BlobService _blobService;
 
-        public StudentProfileController(Db db, IWebHostEnvironment env)
+        public StudentProfileController(Db db, BlobService blobService)
         {
             _db = db;
-            _env = env;
-        }
+            _blobService = blobService;
+       }
 
         //  GET /api/student/profile
         [HttpGet]
