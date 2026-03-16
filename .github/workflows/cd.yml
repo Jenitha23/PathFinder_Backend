@@ -38,3 +38,6 @@ jobs:
         with:
           app-name: 'PathFinder'
           images: '${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-backend:latest'
+          app-settings: |
+            BlobConnectionString=${{ secrets.AZURE_BLOB_CONNECTION_STRING }}
+            BlobContainerName=${{ secrets.AZURE_BLOB_CONTAINER_NAME }}

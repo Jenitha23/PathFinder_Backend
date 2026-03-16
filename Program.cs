@@ -25,6 +25,7 @@ builder.Services.AddScoped<AdminRepository>();
 // Services: stateless helpers (hashing, token creation, revocation tracking)
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddScoped<BlobService>();
 
 // Token revocation is stored in-memory (sufficient for single-instance demo).
 builder.Services.AddSingleton<TokenRevocationService>();
