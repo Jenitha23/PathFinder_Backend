@@ -4,6 +4,7 @@ using PATHFINDER_BACKEND.Data;
 using PATHFINDER_BACKEND.DTOs;
 using PATHFINDER_BACKEND.Repositories;
 using System.Security.Claims;
+using PATHFINDER_BACKEND.Services;
 
 namespace PATHFINDER_BACKEND.Controllers
 {
