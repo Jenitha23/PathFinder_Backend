@@ -112,7 +112,6 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
             var newId = (int)await cmd.ExecuteScalarAsync();
             return newId;
         }
-        }
 
         /// <summary>
         /// Gets the total number of applications submitted by a student.
