@@ -88,7 +88,7 @@ WHERE student_id = @studentId AND job_id = @jobId;
             using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@studentId", studentId);
             cmd.Parameters.AddWithValue("@jobId", jobId);
-            var count = (int)await cmd.ExecuteScalarAsync();
+            var count = Convert.ToInt32(await cmd.ExecuteScalarAsync());
             return count > 0;
         }
 
@@ -109,7 +109,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
             cmd.Parameters.AddWithValue("@studentId", studentId);
             cmd.Parameters.AddWithValue("@jobId", jobId);
             cmd.Parameters.AddWithValue("@coverLetter", (object?)coverLetter ?? DBNull.Value);
-            var newId = (int)await cmd.ExecuteScalarAsync();
+            var newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
             return newId;
         }
 
@@ -127,7 +127,7 @@ WHERE student_id = @studentId;
             await conn.OpenAsync();
             using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@studentId", studentId);
-            return (int)await cmd.ExecuteScalarAsync();
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync());
         }
     }
 }

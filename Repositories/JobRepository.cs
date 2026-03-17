@@ -83,18 +83,83 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_company_id' AND 
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 10;
 
-            var whereSql = @"
-WHERE
-    (@keyword IS NULL OR
-        j.title LIKE '%' + @keyword + '%' OR
-        j.description LIKE '%' + @keyword + '%' OR
-        c.company_name LIKE '%' + @keyword + '%')
-    AND (@title IS NULL OR j.title LIKE '%' + @title + '%')
-    AND (@company IS NULL OR c.company_name LIKE '%' + @company + '%')
-    AND (@location IS NULL OR j.location = @location)
-    AND (@type IS NULL OR j.type = @type)
-    AND (@category IS NULL OR j.category = @category)
-";
+            var whereClauses = new List<string> { "1=1" };
+            var parameters = new List<SqlParameter>();
+
+            // 1. Keyword search (Title, Description, Company) - Multi-token
+            if (!string.IsNullOrWhiteSpace(keyword))
+            {
+                var tokens = keyword.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var keywordClauses = new List<string>();
+                for (int i = 0; i < tokens.Length; i++)
+                {
+                    var pName = $"@kw{i}";
+                    keywordClauses.Add($"(j.title LIKE '%' + {pName} + '%' OR j.description LIKE '%' + {pName} + '%' OR c.company_name LIKE '%' + {pName} + '%')");
+                    parameters.Add(new SqlParameter(pName, tokens[i]));
+                }
+                whereClauses.Add($"({string.Join(" AND ", keywordClauses)})");
+            }
+
+            // 2. Title Filter
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                whereClauses.Add("j.title LIKE '%' + @title + '%'");
+                parameters.Add(new SqlParameter("@title", title.Trim()));
+            }
+
+            // 3. Company Filter
+            if (!string.IsNullOrWhiteSpace(company))
+            {
+                whereClauses.Add("c.company_name LIKE '%' + @company + '%'");
+                parameters.Add(new SqlParameter("@company", company.Trim()));
+            }
+
+            // 4. Location Filter - Multi-token for flexibility
+            if (!string.IsNullOrWhiteSpace(location))
+            {
+                var locTokens = location.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var locClauses = new List<string>();
+                for (int i = 0; i < locTokens.Length; i++)
+                {
+                    var pName = $"@loc{i}";
+                    locClauses.Add($"j.location LIKE '%' + {pName} + '%'");
+                    parameters.Add(new SqlParameter(pName, locTokens[i]));
+                }
+                whereClauses.Add($"({string.Join(" AND ", locClauses)})");
+            }
+
+            // 5. Type Filter
+            if (!string.IsNullOrWhiteSpace(type))
+            {
+                whereClauses.Add("j.type LIKE '%' + @type + '%'");
+                parameters.Add(new SqlParameter("@type", type.Trim()));
+            }
+
+            // 6. Category Filter - Fuzzy Multi-token (Crucial for "Quality Assurance" matching "QA")
+            if (!string.IsNullOrWhiteSpace(category))
+            {
+                // Special mapping for common acronyms
+                var searchCat = category.ToLower();
+                if (searchCat.Contains("quality") || searchCat.Contains("assurance") || searchCat.Contains("qa"))
+                {
+                    whereClauses.Add("(j.category LIKE '%QA%' OR j.category LIKE '%Quality%' OR j.category LIKE '%Assurance%' OR j.title LIKE '%QA%')");
+                }
+                else
+                {
+                    var catTokens = category.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    var catClauses = new List<string>();
+                    for (int i = 0; i < catTokens.Length; i++)
+                    {
+                        var pName = $"@cat{i}";
+                        // We search in BOTH category and title for better "Similarity"
+                        catClauses.Add($"(j.category LIKE '%' + {pName} + '%' OR j.title LIKE '%' + {pName} + '%')");
+                        parameters.Add(new SqlParameter(pName, catTokens[i]));
+                    }
+                    whereClauses.Add($"({string.Join(" AND ", catClauses)})");
+                }
+            }
+
+            var whereSql = "WHERE " + string.Join(" AND ", whereClauses);
 
             var countSql = $@"
 SELECT COUNT(*)
@@ -126,14 +191,14 @@ OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
             int totalItems;
             using (var countCmd = new SqlCommand(countSql, conn))
             {
-                AddCommonParameters(countCmd, keyword, title, company, location, type, category);
-                totalItems = (int)await countCmd.ExecuteScalarAsync();
+                foreach (var p in parameters) countCmd.Parameters.Add(new SqlParameter(p.ParameterName, p.Value));
+                totalItems = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
             }
 
             var items = new List<JobListItemResponse>();
             using (var dataCmd = new SqlCommand(dataSql, conn))
             {
-                AddCommonParameters(dataCmd, keyword, title, company, location, type, category);
+                foreach (var p in parameters) dataCmd.Parameters.Add(new SqlParameter(p.ParameterName, p.Value));
                 dataCmd.Parameters.AddWithValue("@offset", (page - 1) * pageSize);
                 dataCmd.Parameters.AddWithValue("@pageSize", pageSize);
 
