@@ -156,7 +156,44 @@ namespace PATHFINDER_BACKEND.Controllers
                 status?.Trim(),
                 sortBy ?? "date_desc");
 
-            return Ok(applications);
+            // Return friendly messages when no applications are found
+            if (applications.Count == 0)
+            {
+                if (!string.IsNullOrWhiteSpace(status))
+                {
+                    var statusLower = status!.Trim().ToLower();
+                    var friendlyMessage = statusLower switch
+                    {
+                        "accepted" => "You don't have any accepted applications yet.",
+                        "rejected" => "You don't have any rejected applications.",
+                        "shortlisted" => "You don't have any shortlisted applications yet.",
+                        "pending" => "You don't have any pending applications.",
+                        _ => $"No applications found with status '{status}'."
+                    };
+
+                    return Ok(new
+                    {
+                        message = friendlyMessage,
+                        code = "no_applications_for_status",
+                        status = status.Trim(),
+                        applications = Array.Empty<object>()
+                    });
+                }
+
+                return Ok(new
+                {
+                    message = "You haven't applied to any jobs yet. Start exploring opportunities!",
+                    code = "no_applications",
+                    applications = Array.Empty<object>()
+                });
+            }
+
+            return Ok(new
+            {
+                message = $"Found {applications.Count} application(s).",
+                count = applications.Count,
+                applications
+            });
         }
 
         private int? GetStudentIdFromToken()
