@@ -112,5 +112,23 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);
             var newId = (int)await cmd.ExecuteScalarAsync();
             return newId;
         }
+        }
+
+        /// <summary>
+        /// Gets the total number of applications submitted by a student.
+        /// </summary>
+        public async Task<int> GetStudentApplicationCountAsync(int studentId)
+        {
+            const string sql = @"
+SELECT COUNT(1)
+FROM dbo.applications
+WHERE student_id = @studentId;
+";
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@studentId", studentId);
+            return (int)await cmd.ExecuteScalarAsync();
+        }
     }
 }

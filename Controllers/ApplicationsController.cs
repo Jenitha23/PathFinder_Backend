@@ -99,6 +99,28 @@ namespace PATHFINDER_BACKEND.Controllers
             });
         }
 
+        /// <summary>
+        /// GET /api/applications/count
+        /// Returns the total number of applications submitted by the logged-in student.
+        /// </summary>
+        [HttpGet("count")]
+        public async Task<IActionResult> GetApplicationCount()
+        {
+            var studentId = GetStudentIdFromToken();
+            if (studentId == null)
+                return Unauthorized(new { message = "Invalid token: missing userId." });
+
+            var appRepo = new ApplicationRepository(_db);
+            await appRepo.EnsureTableAndConstraintsAsync();
+            
+            var count = await appRepo.GetStudentApplicationCountAsync(studentId.Value);
+
+            return Ok(new
+            {
+                count
+            });
+        }
+
         private int? GetStudentIdFromToken()
         {
             var userIdStr = User.FindFirst("userId")?.Value;
