@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using PATHFINDER_BACKEND.Data;
+using PATHFINDER_BACKEND.DTOs;
 
 namespace PATHFINDER_BACKEND.Repositories
 {
@@ -128,6 +129,78 @@ WHERE student_id = @studentId;
             using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@studentId", studentId);
             return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+        }
+
+        /// <summary>
+        /// Gets all applications for a student, joined with job and company details.
+        /// Supports optional filtering by status and sorting by applied date.
+        /// </summary>
+        public async Task<List<ApplicationResponse>> GetStudentApplicationsAsync(
+            int studentId,
+            string? status = null,
+            string sortBy = "date_desc")
+        {
+            var whereClauses = new List<string> { "a.student_id = @studentId" };
+            var parameters = new List<SqlParameter>
+            {
+                new SqlParameter("@studentId", studentId)
+            };
+
+            // Filter by status if provided
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                whereClauses.Add("a.status = @status");
+                parameters.Add(new SqlParameter("@status", status.Trim()));
+            }
+
+            var whereSql = "WHERE " + string.Join(" AND ", whereClauses);
+
+            // Determine sort order
+            var orderSql = sortBy?.ToLower() == "date_asc"
+                ? "ORDER BY a.applied_date ASC"
+                : "ORDER BY a.applied_date DESC";
+
+            var sql = $@"
+SELECT
+    a.id,
+    j.id,
+    j.title,
+    c.company_name,
+    j.location,
+    j.type,
+    a.status,
+    a.applied_date
+FROM dbo.applications a
+INNER JOIN dbo.jobs j ON a.job_id = j.id
+INNER JOIN dbo.companies c ON j.company_id = c.id
+{whereSql}
+{orderSql};
+";
+
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(sql, conn);
+            foreach (var p in parameters)
+                cmd.Parameters.Add(p);
+
+            var results = new List<ApplicationResponse>();
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                results.Add(new ApplicationResponse
+                {
+                    ApplicationId = reader.GetInt32(0),
+                    JobId = reader.GetInt32(1),
+                    JobTitle = reader.GetString(2),
+                    CompanyName = reader.GetString(3),
+                    Location = reader.GetString(4),
+                    JobType = reader.GetString(5),
+                    Status = reader.GetString(6),
+                    AppliedDate = reader.GetDateTime(7)
+                });
+            }
+
+            return results;
         }
     }
 }

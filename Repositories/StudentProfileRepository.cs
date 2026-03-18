@@ -271,7 +271,7 @@ BEGIN
         internship_experience = @internship_experience,
         certifications = @certifications,
 
-        cv_url = COALESCE(@cv_url, cv_url),
+        cv_url = CASE WHEN @cv_url IS NOT NULL THEN @cv_url WHEN @remove_cv = 1 THEN NULL ELSE cv_url END,
         updated_at_utc = SYSUTCDATETIME()
     WHERE student_id = @studentId;
 END
@@ -347,6 +347,7 @@ END
             cmd.Parameters.AddWithValue("@certifications", DbVal(req.Certifications?.Trim()));
 
             cmd.Parameters.AddWithValue("@cv_url", (object?)cvUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@remove_cv", req.RemoveCv ? 1 : 0);
 
             await cmd.ExecuteNonQueryAsync();
         }
