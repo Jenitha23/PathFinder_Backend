@@ -50,5 +50,7 @@ namespace PATHFINDER_BACKEND.DTOs
 
         // CV file upload (PDF/DOC/DOCX)
         public IFormFile? CvFile { get; set; }
+
+        public bool RemoveCv { get; set; }
     }
 }
