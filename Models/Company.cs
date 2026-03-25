@@ -21,5 +21,13 @@ namespace PATHFINDER_BACKEND.Models
         public string Status { get; set; } = "PENDING_APPROVAL";
 
         public DateTime CreatedAt { get; set; }
+
+        // NEW PROFILE FIELDS
+        public string? Description { get; set; }
+        public string? Industry { get; set; }
+        public string? Website { get; set; }
+        public string? Location { get; set; }
+        public string? Phone { get; set; }
+        public string? LogoUrl { get; set; }
     }
 }
