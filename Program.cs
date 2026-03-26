@@ -21,11 +21,13 @@ builder.Services.AddSingleton<Db>();
 builder.Services.AddScoped<StudentRepository>();
 builder.Services.AddScoped<CompanyRepository>();
 builder.Services.AddScoped<AdminRepository>();
+builder.Services.AddScoped<CompanyProfileRepository>();
 
 // Services: stateless helpers (hashing, token creation, revocation tracking)
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<BlobService>();
+builder.Services.AddScoped<LocalFileStorageService>();
 
 // Token revocation is stored in-memory (sufficient for single-instance demo).
 builder.Services.AddSingleton<TokenRevocationService>();
@@ -99,6 +101,29 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Create upload directories for local storage
+var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+if (!Directory.Exists(webRootPath))
+{
+    Directory.CreateDirectory(webRootPath);
+}
+
+var uploadsPath = Path.Combine(webRootPath, "uploads");
+if (!Directory.Exists(uploadsPath))
+{
+    Directory.CreateDirectory(uploadsPath);
+}
+
+var companyLogoPath = Path.Combine(uploadsPath, "company-logos");
+if (!Directory.Exists(companyLogoPath))
+{
+    Directory.CreateDirectory(companyLogoPath);
+}
+
+// Enable static files to serve uploaded images
+app.UseStaticFiles();
+
 
 // Swagger UI in Development and Production environments
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
