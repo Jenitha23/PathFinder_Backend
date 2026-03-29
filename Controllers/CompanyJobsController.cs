@@ -137,6 +137,129 @@ namespace PATHFINDER_BACKEND.Controllers
         }
 
         /// <summary>
+        /// GET /api/company/jobs
+        /// Returns all jobs posted by the authenticated company.
+        /// Only approved companies can access this endpoint.
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetMyJobs()
+        {
+            // Get current company ID from token
+            if (!TryGetCurrentCompanyId(out var companyId))
+            {
+                return Unauthorized(new { message = "Invalid token: missing userId." });
+            }
+
+            // Verify company exists and is approved
+            var company = await _companyRepo.GetByIdAsync(companyId);
+            if (company == null)
+            {
+                return NotFound(new { message = "Company not found." });
+            }
+
+            // Check if company is approved
+            if (!string.Equals(company.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
+            {
+                return Unauthorized(new 
+                { 
+                    message = $"Company account is not approved. Current status: {company.Status}" 
+                });
+            }
+
+            var jobs = await _jobRepo.GetJobsByCompanyIdAsync(companyId);
+
+            if (jobs == null || jobs.Count == 0)
+            {
+                return Ok(new 
+                { 
+                    message = "You haven't posted any jobs yet.", 
+                    count = 0,
+                    jobs = new List<JobListItemResponse>() 
+                });
+            }
+
+            return Ok(new
+            {
+                message = $"Found {jobs.Count} job(s).",
+                count = jobs.Count,
+                jobs
+            });
+        }
+
+        /// <summary>
+        /// GET /api/company/jobs/{jobId}
+        /// Returns a specific job posted by the authenticated company.
+        /// Companies can only view their own jobs.
+        /// </summary>
+        [HttpGet("{jobId:int}")]
+        public async Task<IActionResult> GetMyJobById(int jobId)
+        {
+            // Get current company ID from token
+            if (!TryGetCurrentCompanyId(out var companyId))
+            {
+                return Unauthorized(new { message = "Invalid token: missing userId." });
+            }
+
+            // Verify company exists and is approved
+            var company = await _companyRepo.GetByIdAsync(companyId);
+            if (company == null)
+            {
+                return NotFound(new { message = "Company not found." });
+            }
+
+            // Check if company is approved
+            if (!string.Equals(company.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
+            {
+                return Unauthorized(new 
+                { 
+                    message = $"Company account is not approved. Current status: {company.Status}" 
+                });
+            }
+
+            var job = await _jobRepo.GetJobByCompanyAndIdAsync(companyId, jobId);
+            if (job == null)
+            {
+                return NotFound(new { message = "Job not found or does not belong to your company." });
+            }
+
+            return Ok(job);
+        }
+
+        /// <summary>
+        /// GET /api/company/jobs/stats
+        /// Returns job statistics for the authenticated company.
+        /// Includes active jobs, active internships, and total applicants.
+        /// </summary>
+        [HttpGet("stats")]
+        public async Task<IActionResult> GetJobStats()
+        {
+            // Get current company ID from token
+            if (!TryGetCurrentCompanyId(out var companyId))
+            {
+                return Unauthorized(new { message = "Invalid token: missing userId." });
+            }
+
+            // Verify company exists and is approved
+            var company = await _companyRepo.GetByIdAsync(companyId);
+            if (company == null)
+            {
+                return NotFound(new { message = "Company not found." });
+            }
+
+            // Check if company is approved
+            if (!string.Equals(company.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
+            {
+                return Unauthorized(new 
+                { 
+                    message = $"Company account is not approved. Current status: {company.Status}" 
+                });
+            }
+
+            var stats = await _jobRepo.GetJobStatsAsync(companyId);
+            return Ok(stats);
+        }
+
+        /// <summary>
         /// Helper method to extract company ID from JWT token.
         /// </summary>
         private bool TryGetCurrentCompanyId(out int companyId)
