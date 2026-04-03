@@ -40,6 +40,9 @@
   <AdditionalFiles Remove="PATHFINDER_BACKEND.Tests\**\*" />
   <UpToDateCheckInput Remove="PATHFINDER_BACKEND.Tests\**\*" />
   <UpToDateCheckBuilt Remove="PATHFINDER_BACKEND.Tests\**\*" />
+  <Compile Remove="PathFinder.DatabaseMigrator\**\*.cs" />
+  <EmbeddedResource Remove="PathFinder.DatabaseMigrator\**\*" />
+  <None Remove="PathFinder.DatabaseMigrator\**\*" />
   </ItemGroup>
 
 </Project>
