@@ -13,6 +13,23 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore solution
+        run: dotnet restore PathFinder_Backend.sln
+
+      - name: Build solution
+        run: dotnet build PathFinder_Backend.sln --no-restore
+
+      - name: Run database migrations
+        run: dotnet run --project PathFinder.DatabaseMigrator/PathFinder.DatabaseMigrator.csproj --no-build
+        env:
+          ConnectionStrings__DefaultConnection: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+          ASPNETCORE_ENVIRONMENT: Production
+
       - name: Set Image Name
         run: echo "IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/pathfinder-backend" >> $GITHUB_ENV
 
