@@ -24,8 +24,17 @@ jobs:
       - name: Build solution
         run: dotnet build PathFinder_Backend.sln --no-restore
 
-      - name: Run database migrations
-        run: dotnet run --project PathFinder.DatabaseMigrator/PathFinder.DatabaseMigrator.csproj --no-build
+      - name: Run database migrations (wait + retry)
+        run: |
+          echo "Waiting for database to wake up..."
+          sleep 60
+
+          for i in 1 2 3 4; do
+            echo "Attempt $i..."
+            dotnet run --project PathFinder.DatabaseMigrator/PathFinder.DatabaseMigrator.csproj --no-build && break
+            echo "Retrying in 30 seconds..."
+            sleep 30
+          done
         env:
           ConnectionStrings__DefaultConnection: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
           ASPNETCORE_ENVIRONMENT: Production
