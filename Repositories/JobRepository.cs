@@ -22,6 +22,8 @@ BEGIN
         id INT IDENTITY(1,1) PRIMARY KEY,
         title NVARCHAR(200) NOT NULL,
         description NVARCHAR(MAX) NOT NULL,
+        requirements NVARCHAR(MAX) NULL,
+        responsibilities NVARCHAR(MAX) NULL,
         company_id INT NOT NULL,
         location NVARCHAR(150) NOT NULL,
         salary NVARCHAR(100) NULL,
@@ -37,16 +39,43 @@ BEGIN
     );
 END;
 
-IF COL_LENGTH('dbo.jobs', 'title') IS NULL ALTER TABLE dbo.jobs ADD title NVARCHAR(200) NOT NULL DEFAULT '';
-IF COL_LENGTH('dbo.jobs', 'description') IS NULL ALTER TABLE dbo.jobs ADD description NVARCHAR(MAX) NOT NULL DEFAULT '';
-IF COL_LENGTH('dbo.jobs', 'company_id') IS NULL ALTER TABLE dbo.jobs ADD company_id INT NOT NULL DEFAULT 1;
-IF COL_LENGTH('dbo.jobs', 'location') IS NULL ALTER TABLE dbo.jobs ADD location NVARCHAR(150) NOT NULL DEFAULT '';
-IF COL_LENGTH('dbo.jobs', 'salary') IS NULL ALTER TABLE dbo.jobs ADD salary NVARCHAR(100) NULL;
-IF COL_LENGTH('dbo.jobs', 'type') IS NULL ALTER TABLE dbo.jobs ADD type NVARCHAR(50) NOT NULL DEFAULT '';
-IF COL_LENGTH('dbo.jobs', 'deadline') IS NULL ALTER TABLE dbo.jobs ADD deadline DATE NOT NULL DEFAULT GETDATE();
-IF COL_LENGTH('dbo.jobs', 'category') IS NULL ALTER TABLE dbo.jobs ADD category NVARCHAR(100) NOT NULL DEFAULT '';
-IF COL_LENGTH('dbo.jobs', 'created_at') IS NULL ALTER TABLE dbo.jobs ADD created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME();
+-- Add requirements column if not exists (for existing tables)
+IF COL_LENGTH('dbo.jobs', 'requirements') IS NULL
+    ALTER TABLE dbo.jobs ADD requirements NVARCHAR(MAX) NULL;
 
+-- Add responsibilities column if not exists (for existing tables)
+IF COL_LENGTH('dbo.jobs', 'responsibilities') IS NULL
+    ALTER TABLE dbo.jobs ADD responsibilities NVARCHAR(MAX) NULL;
+
+-- Ensure all other columns exist
+IF COL_LENGTH('dbo.jobs', 'title') IS NULL 
+    ALTER TABLE dbo.jobs ADD title NVARCHAR(200) NOT NULL DEFAULT '';
+
+IF COL_LENGTH('dbo.jobs', 'description') IS NULL 
+    ALTER TABLE dbo.jobs ADD description NVARCHAR(MAX) NOT NULL DEFAULT '';
+
+IF COL_LENGTH('dbo.jobs', 'company_id') IS NULL 
+    ALTER TABLE dbo.jobs ADD company_id INT NOT NULL DEFAULT 1;
+
+IF COL_LENGTH('dbo.jobs', 'location') IS NULL 
+    ALTER TABLE dbo.jobs ADD location NVARCHAR(150) NOT NULL DEFAULT '';
+
+IF COL_LENGTH('dbo.jobs', 'salary') IS NULL 
+    ALTER TABLE dbo.jobs ADD salary NVARCHAR(100) NULL;
+
+IF COL_LENGTH('dbo.jobs', 'type') IS NULL 
+    ALTER TABLE dbo.jobs ADD type NVARCHAR(50) NOT NULL DEFAULT '';
+
+IF COL_LENGTH('dbo.jobs', 'deadline') IS NULL 
+    ALTER TABLE dbo.jobs ADD deadline DATE NOT NULL DEFAULT GETDATE();
+
+IF COL_LENGTH('dbo.jobs', 'category') IS NULL 
+    ALTER TABLE dbo.jobs ADD category NVARCHAR(100) NOT NULL DEFAULT '';
+
+IF COL_LENGTH('dbo.jobs', 'created_at') IS NULL 
+    ALTER TABLE dbo.jobs ADD created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME();
+
+-- Create indexes
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_title' AND object_id = OBJECT_ID('dbo.jobs'))
     CREATE INDEX idx_jobs_title ON dbo.jobs(title);
 
@@ -61,6 +90,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_category' AND ob
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_company_id' AND object_id = OBJECT_ID('dbo.jobs'))
     CREATE INDEX idx_jobs_company_id ON dbo.jobs(company_id);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_requirements' AND object_id = OBJECT_ID('dbo.jobs'))
+    CREATE INDEX idx_jobs_requirements ON dbo.jobs(requirements);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_responsibilities' AND object_id = OBJECT_ID('dbo.jobs'))
+    CREATE INDEX idx_jobs_responsibilities ON dbo.jobs(responsibilities);
 ";
 
             using var conn = _db.CreateConnection();
@@ -135,10 +170,9 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_company_id' AND 
                 parameters.Add(new SqlParameter("@type", type.Trim()));
             }
 
-            // 6. Category Filter - Fuzzy Multi-token (Crucial for "Quality Assurance" matching "QA")
+            // 6. Category Filter - Fuzzy Multi-token
             if (!string.IsNullOrWhiteSpace(category))
             {
-                // Special mapping for common acronyms
                 var searchCat = category.ToLower();
                 if (searchCat.Contains("quality") || searchCat.Contains("assurance") || searchCat.Contains("qa"))
                 {
@@ -151,7 +185,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_company_id' AND 
                     for (int i = 0; i < catTokens.Length; i++)
                     {
                         var pName = $"@cat{i}";
-                        // We search in BOTH category and title for better "Similarity"
                         catClauses.Add($"(j.category LIKE '%' + {pName} + '%' OR j.title LIKE '%' + {pName} + '%')");
                         parameters.Add(new SqlParameter(pName, catTokens[i]));
                     }
@@ -240,6 +273,8 @@ SELECT
     j.id,
     j.title,
     j.description,
+    j.requirements,           
+    j.responsibilities,
     j.company_id,
     c.company_name,
     j.location,
@@ -267,14 +302,16 @@ WHERE j.id = @id;
                 Id = reader.GetInt32(0),
                 Title = reader.GetString(1),
                 Description = reader.GetString(2),
-                CompanyId = reader.GetInt32(3),
-                CompanyName = reader.GetString(4),
-                Location = reader.GetString(5),
-                Salary = reader.IsDBNull(6) ? null : reader.GetString(6),
-                Type = reader.GetString(7),
-                Category = reader.GetString(8),
-                Deadline = reader.GetDateTime(9),
-                CreatedAt = reader.GetDateTime(10)
+                Requirements = reader.IsDBNull(3) ? null : reader.GetString(3),
+                Responsibilities = reader.IsDBNull(4) ? null : reader.GetString(4),
+                CompanyId = reader.GetInt32(5),
+                CompanyName = reader.GetString(6),
+                Location = reader.GetString(7),
+                Salary = reader.IsDBNull(8) ? null : reader.GetString(8),
+                Type = reader.GetString(9),
+                Category = reader.GetString(10),
+                Deadline = reader.GetDateTime(11),
+                CreatedAt = reader.GetDateTime(12)
             };
         }
 
