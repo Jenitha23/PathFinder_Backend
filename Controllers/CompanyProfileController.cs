@@ -16,16 +16,16 @@ namespace PATHFINDER_BACKEND.Controllers
     {
         private readonly CompanyProfileRepository _profileRepo;
         private readonly CompanyRepository _companyRepo;
-        private readonly LocalFileStorageService _storageService;
+        private readonly BlobService _blobService;
 
         public CompanyProfileController(
             CompanyProfileRepository profileRepo,
             CompanyRepository companyRepo,
-            LocalFileStorageService storageService)
+            BlobService blobService)
         {
             _profileRepo = profileRepo;
             _companyRepo = companyRepo;
-            _storageService = storageService;
+            _blobService = blobService;
         }
 
         /// <summary>
@@ -107,7 +107,7 @@ namespace PATHFINDER_BACKEND.Controllers
                 {
                     try
                     {
-                        savedLogoUrl = await _storageService.UploadCompanyLogoAsync(logoFile, companyId);
+                        savedLogoUrl = await _blobService.UploadCompanyLogoAsync(logoFile, companyId);
                     }
                     catch (InvalidOperationException ex)
                     {
@@ -205,11 +205,11 @@ namespace PATHFINDER_BACKEND.Controllers
             // Delete old logo if replaced or removed
             if (removeLogo && !string.IsNullOrWhiteSpace(oldLogoUrl))
             {
-                await _storageService.DeleteCompanyLogoAsync(companyId, oldLogoUrl);
+                await _blobService.DeleteCompanyLogoAsync(companyId, oldLogoUrl);
             }
             else if (savedLogoUrl != null && !string.IsNullOrWhiteSpace(oldLogoUrl))
             {
-                await _storageService.DeleteCompanyLogoAsync(companyId, oldLogoUrl);
+                await _blobService.DeleteCompanyLogoAsync(companyId, oldLogoUrl);
             }
 
             // Return updated profile
@@ -261,7 +261,7 @@ namespace PATHFINDER_BACKEND.Controllers
                 return StatusCode(500, new { message = "Failed to remove logo." });
 
             // Delete the actual file from local storage
-            await _storageService.DeleteCompanyLogoAsync(companyId, oldLogoUrl);
+            await _blobService.DeleteCompanyLogoAsync(companyId, oldLogoUrl);
 
             return Ok(new { message = "Logo removed successfully." });
         }
