@@ -28,7 +28,8 @@ builder.Services.AddScoped<CompanyJobRepository>();
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<BlobService>();
-builder.Services.AddScoped<BlobService>();
+builder.Services.AddScoped<LocalFileStorageService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Token revocation is stored in-memory (sufficient for single-instance demo).
 builder.Services.AddSingleton<TokenRevocationService>();
