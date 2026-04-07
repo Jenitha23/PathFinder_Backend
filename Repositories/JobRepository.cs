@@ -201,6 +201,8 @@ INNER JOIN dbo.companies c ON j.company_id = c.id
 SELECT
     j.id,
     j.title,
+    j.description,
+    j.requirements,
     c.company_name,
     j.location,
     j.type,
@@ -238,12 +240,14 @@ OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
                     {
                         Id = reader.GetInt32(0),
                         Title = reader.GetString(1),
-                        CompanyName = reader.GetString(2),
-                        Location = reader.GetString(3),
-                        Type = reader.GetString(4),
-                        Category = reader.GetString(5),
-                        Salary = reader.IsDBNull(6) ? null : reader.GetString(6),
-                        Deadline = reader.GetDateTime(7)
+                        Requirements = reader.IsDBNull(2) ? null : reader.GetString(3),
+                        Responsibilities = reader.IsDBNull(3) ? null : reader.GetString(4),
+                        CompanyName = reader.GetString(4),
+                        Location = reader.GetString(5),
+                        Type = reader.GetString(6),
+                        Category = reader.GetString(7),
+                        Salary = reader.IsDBNull(8) ? null : reader.GetString(6),
+                        Deadline = reader.GetDateTime(9)
                     });
                 }
             }

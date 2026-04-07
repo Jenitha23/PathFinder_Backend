@@ -126,6 +126,8 @@ namespace PATHFINDER_BACKEND.Repositories
 SELECT
     j.id,
     j.title,
+    j.requirements,
+    j.responsibilities,
     c.company_name,
     j.location,
     j.type,
@@ -153,12 +155,14 @@ ORDER BY j.created_at DESC, j.id DESC;
                 {
                     Id = reader.GetInt32(0),
                     Title = reader.GetString(1),
-                    CompanyName = reader.GetString(2),
-                    Location = reader.GetString(3),
-                    Type = reader.GetString(4),
-                    Category = reader.GetString(5),
-                    Salary = reader.IsDBNull(6) ? null : reader.GetString(6),
-                    Deadline = reader.GetDateTime(7)
+                    Requirements = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    Responsibilities = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    CompanyName = reader.GetString(4),
+                    Location = reader.GetString(5),
+                    Type = reader.GetString(6),
+                    Category = reader.GetString(7),
+                    Salary = reader.IsDBNull(8) ? null : reader.GetString(8),
+                    Deadline = reader.GetDateTime(9)
                 });
             }
 
