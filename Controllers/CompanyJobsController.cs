@@ -380,6 +380,8 @@ namespace PATHFINDER_BACKEND.Controllers
                         id = updatedJob.Id,
                         title = updatedJob.Title,
                         description = updatedJob.Description,
+                        requirements = updatedJob.Requirements,       
+                        responsibilities = updatedJob.Responsibilities,
                         location = updatedJob.Location,
                         salary = updatedJob.Salary,
                         jobType = updatedJob.Type,

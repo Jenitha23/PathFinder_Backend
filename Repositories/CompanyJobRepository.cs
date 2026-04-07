@@ -175,6 +175,8 @@ SELECT
     j.id,
     j.title,
     j.description,
+    j.requirements,
+    j.responsibilities,
     j.company_id,
     c.company_name,
     j.location,
@@ -205,14 +207,16 @@ AND (j.is_deleted IS NULL OR j.is_deleted = 0);
                 Id = reader.GetInt32(0),
                 Title = reader.GetString(1),
                 Description = reader.GetString(2),
-                CompanyId = reader.GetInt32(3),
-                CompanyName = reader.GetString(4),
-                Location = reader.GetString(5),
-                Salary = reader.IsDBNull(6) ? null : reader.GetString(6),
-                Type = reader.GetString(7),
-                Category = reader.GetString(8),
-                Deadline = reader.GetDateTime(9),
-                CreatedAt = reader.GetDateTime(10)
+                Requirements = reader.IsDBNull(3) ? null : reader.GetString(3),
+                Responsibilities = reader.IsDBNull(4) ? null : reader.GetString(4),
+                CompanyId = reader.GetInt32(5),
+                CompanyName = reader.GetString(6),
+                Location = reader.GetString(7),
+                Salary = reader.IsDBNull(8) ? null : reader.GetString(8),
+                Type = reader.GetString(9),
+                Category = reader.GetString(10),
+                Deadline = reader.GetDateTime(11),
+                CreatedAt = reader.GetDateTime(12)
             };
         }
 
@@ -290,7 +294,7 @@ WHERE j.company_id = @companyId AND (j.is_deleted IS NULL OR j.is_deleted = 0);
                 throw new InvalidOperationException("Job deadline must be a future date.");
             }
 
-            // Update the job
+            // Update the job with ALL fields including requirements and responsibilities
             const string updateSql = @"
                 UPDATE dbo.jobs
                 SET 
@@ -310,11 +314,13 @@ WHERE j.company_id = @companyId AND (j.is_deleted IS NULL OR j.is_deleted = 0);
                 AND company_id = @companyId
                 AND (is_deleted IS NULL OR is_deleted = 0);
 
-                -- Return the updated job details
+                -- Return the updated job details with ALL fields
                 SELECT 
                     j.id,
                     j.title,
                     j.description,
+                    j.requirements,
+                    j.responsibilities,
                     j.company_id,
                     c.company_name,
                     j.location,
@@ -355,14 +361,16 @@ WHERE j.company_id = @companyId AND (j.is_deleted IS NULL OR j.is_deleted = 0);
                         Id = reader.GetInt32(0),
                         Title = reader.GetString(1),
                         Description = reader.GetString(2),
-                        CompanyId = reader.GetInt32(3),
-                        CompanyName = reader.GetString(4),
-                        Location = reader.GetString(5),
-                        Salary = reader.IsDBNull(6) ? null : reader.GetString(6),
-                        Type = reader.GetString(7),
-                        Category = reader.GetString(8),
-                        Deadline = reader.GetDateTime(9),
-                        CreatedAt = reader.GetDateTime(10)
+                        Requirements = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        Responsibilities = reader.IsDBNull(4) ? null : reader.GetString(4),
+                        CompanyId = reader.GetInt32(5),
+                        CompanyName = reader.GetString(6),
+                        Location = reader.GetString(7),
+                        Salary = reader.IsDBNull(8) ? null : reader.GetString(8),
+                        Type = reader.GetString(9),
+                        Category = reader.GetString(10),
+                        Deadline = reader.GetDateTime(11),
+                        CreatedAt = reader.GetDateTime(12)
                     };
                 }
             }
