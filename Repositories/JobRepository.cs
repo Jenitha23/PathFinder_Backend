@@ -91,11 +91,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_category' AND ob
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_company_id' AND object_id = OBJECT_ID('dbo.jobs'))
     CREATE INDEX idx_jobs_company_id ON dbo.jobs(company_id);
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_requirements' AND object_id = OBJECT_ID('dbo.jobs'))
-    CREATE INDEX idx_jobs_requirements ON dbo.jobs(requirements);
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_responsibilities' AND object_id = OBJECT_ID('dbo.jobs'))
-    CREATE INDEX idx_jobs_responsibilities ON dbo.jobs(responsibilities);
 ";
 
             using var conn = _db.CreateConnection();
@@ -118,7 +114,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_responsibilities
             if (page < 1) page = 1;
             if (pageSize < 1) pageSize = 10;
 
-            var whereClauses = new List<string> { "1=1" };
+            var whereClauses = new List<string> { "(j.is_deleted IS NULL OR j.is_deleted = 0)" };
             var parameters = new List<SqlParameter>();
 
             // 1. Keyword search (Title, Description, Company) - Multi-token
@@ -285,7 +281,7 @@ SELECT
     j.created_at
 FROM dbo.jobs j
 INNER JOIN dbo.companies c ON j.company_id = c.id
-WHERE j.id = @id;
+WHERE j.id = @id AND (j.is_deleted IS NULL OR j.is_deleted = 0);
 ";
 
             using var conn = _db.CreateConnection();
