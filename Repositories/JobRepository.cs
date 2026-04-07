@@ -91,11 +91,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_category' AND ob
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_company_id' AND object_id = OBJECT_ID('dbo.jobs'))
     CREATE INDEX idx_jobs_company_id ON dbo.jobs(company_id);
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_requirements' AND object_id = OBJECT_ID('dbo.jobs'))
-    CREATE INDEX idx_jobs_requirements ON dbo.jobs(requirements);
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_jobs_responsibilities' AND object_id = OBJECT_ID('dbo.jobs'))
-    CREATE INDEX idx_jobs_responsibilities ON dbo.jobs(responsibilities);
 ";
 
             using var conn = _db.CreateConnection();
