@@ -17,5 +17,10 @@ namespace PATHFINDER_BACKEND.Models
 
         // Usually set by DB default (e.g., SYSUTCDATETIME()) and returned on select.
         public DateTime CreatedAt { get; set; }
+        public string Status { get; set; } = "ACTIVE";
+        public bool IsDeleted { get; set; }
+        public DateTime? DeletedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+        public string? SuspensionReason { get; set; }
     }
 }
