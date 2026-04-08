@@ -298,7 +298,7 @@ namespace PATHFINDER_BACKEND.Repositories
 
             var message = status == "APPROVED"
                 ? "Company approved successfully."
-                : "Company rejected successfully.";
+                : status == "REJECTED" ? "Company rejected successfully." : $"Company status updated to {status}.";
 
             return (true, message);
         }
@@ -520,6 +520,236 @@ namespace PATHFINDER_BACKEND.Repositories
 
             var rows = await cmd.ExecuteNonQueryAsync();
             return rows > 0;
+        }
+
+        // ========== NEW METHODS FOR ADMIN USER MANAGEMENT ==========
+
+        /// <summary>
+        /// Get all companies with optional filtering and pagination (for admin user management)
+        /// </summary>
+        public async Task<(List<Company> Companies, int TotalCount)> GetAllWithFilterAsync(
+            string? searchTerm = null,
+            string? status = null,
+            int page = 1,
+            int pageSize = 20)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            var sql = @"
+                SELECT id, company_name, email, password_hash, status, created_at,
+                       description, industry, website, location, phone, logo_url,
+                       rejection_reason, approved_by, approved_at, updated_by, updated_at, 
+                       admin_notes, is_deleted, deleted_at, suspension_reason
+                FROM companies
+                WHERE is_deleted = 0";
+
+            var conditions = new List<string>();
+            var parameters = new List<SqlParameter>();
+
+            // Search by company name or email
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                conditions.Add("(company_name LIKE @search OR email LIKE @search)");
+                parameters.Add(new SqlParameter("@search", $"%{searchTerm.Trim()}%"));
+            }
+
+            // Filter by status
+            if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
+            {
+                conditions.Add("status = @status");
+                parameters.Add(new SqlParameter("@status", status));
+            }
+
+            if (conditions.Any())
+            {
+                sql += " AND " + string.Join(" AND ", conditions);
+            }
+
+            // Get total count
+            var countSql = sql.Replace(
+                "SELECT id, company_name, email, password_hash, status, created_at, description, industry, website, location, phone, logo_url, rejection_reason, approved_by, approved_at, updated_by, updated_at, admin_notes, is_deleted, deleted_at, suspension_reason",
+                "SELECT COUNT(*)");
+
+            await using var countCmd = new SqlCommand(countSql, conn);
+            foreach (var param in parameters)
+            {
+                countCmd.Parameters.Add(new SqlParameter(param.ParameterName, param.Value));
+            }
+            var totalCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+
+            // Add pagination
+            sql += " ORDER BY created_at DESC OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY";
+            parameters.Add(new SqlParameter("@offset", (page - 1) * pageSize));
+            parameters.Add(new SqlParameter("@pageSize", pageSize));
+
+            await using var cmd = new SqlCommand(sql, conn);
+            foreach (var param in parameters)
+            {
+                cmd.Parameters.Add(new SqlParameter(param.ParameterName, param.Value));
+            }
+
+            var companies = new List<Company>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                companies.Add(new Company
+                {
+                    Id = reader.GetInt32(reader.GetOrdinal("id")),
+                    CompanyName = reader.GetString(reader.GetOrdinal("company_name")),
+                    Email = reader.GetString(reader.GetOrdinal("email")),
+                    PasswordHash = reader.GetString(reader.GetOrdinal("password_hash")),
+                    Status = reader.GetString(reader.GetOrdinal("status")),
+                    CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at")),
+                    Description = reader.IsDBNull(reader.GetOrdinal("description")) ? null : reader.GetString(reader.GetOrdinal("description")),
+                    Industry = reader.IsDBNull(reader.GetOrdinal("industry")) ? null : reader.GetString(reader.GetOrdinal("industry")),
+                    Website = reader.IsDBNull(reader.GetOrdinal("website")) ? null : reader.GetString(reader.GetOrdinal("website")),
+                    Location = reader.IsDBNull(reader.GetOrdinal("location")) ? null : reader.GetString(reader.GetOrdinal("location")),
+                    Phone = reader.IsDBNull(reader.GetOrdinal("phone")) ? null : reader.GetString(reader.GetOrdinal("phone")),
+                    LogoUrl = reader.IsDBNull(reader.GetOrdinal("logo_url")) ? null : reader.GetString(reader.GetOrdinal("logo_url")),
+                    RejectionReason = reader.IsDBNull(reader.GetOrdinal("rejection_reason")) ? null : reader.GetString(reader.GetOrdinal("rejection_reason")),
+                    ApprovedBy = reader.IsDBNull(reader.GetOrdinal("approved_by")) ? null : reader.GetInt32(reader.GetOrdinal("approved_by")),
+                    ApprovedAt = reader.IsDBNull(reader.GetOrdinal("approved_at")) ? null : reader.GetDateTime(reader.GetOrdinal("approved_at")),
+                    UpdatedBy = reader.IsDBNull(reader.GetOrdinal("updated_by")) ? null : reader.GetInt32(reader.GetOrdinal("updated_by")),
+                    UpdatedAt = reader.IsDBNull(reader.GetOrdinal("updated_at")) ? null : reader.GetDateTime(reader.GetOrdinal("updated_at")),
+                    AdminNotes = reader.IsDBNull(reader.GetOrdinal("admin_notes")) ? null : reader.GetString(reader.GetOrdinal("admin_notes")),
+                    IsDeleted = reader.GetBoolean(reader.GetOrdinal("is_deleted")),
+                    DeletedAt = reader.IsDBNull(reader.GetOrdinal("deleted_at")) ? null : reader.GetDateTime(reader.GetOrdinal("deleted_at")),
+                    SuspensionReason = reader.IsDBNull(reader.GetOrdinal("suspension_reason")) ? null : reader.GetString(reader.GetOrdinal("suspension_reason"))
+                });
+            }
+
+            return (companies, totalCount);
+        }
+
+        /// <summary>
+        /// Update company account by admin (company name, email, status, suspension reason)
+        /// </summary>
+        public async Task<bool> UpdateByAdminAsync(
+            int companyId,
+            string companyName,
+            string email,
+            string status,
+            int adminId,
+            string? suspensionReason = null,
+            string? adminNotes = null)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                UPDATE companies
+                SET company_name = @companyName,
+                    email = @email,
+                    status = @status,
+                    suspension_reason = @suspensionReason,
+                    admin_notes = @adminNotes,
+                    updated_by = @adminId,
+                    updated_at = SYSUTCDATETIME()
+                WHERE id = @id AND is_deleted = 0";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@companyName", companyName);
+            cmd.Parameters.AddWithValue("@email", email);
+            cmd.Parameters.AddWithValue("@status", status);
+            cmd.Parameters.AddWithValue("@suspensionReason", suspensionReason ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@adminNotes", adminNotes ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@adminId", adminId);
+            cmd.Parameters.AddWithValue("@id", companyId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
+        /// Soft delete a company account (marks as deleted but keeps in database)
+        /// </summary>
+        public async Task<bool> SoftDeleteAsync(int companyId)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                UPDATE companies
+                SET is_deleted = 1,
+                    deleted_at = SYSUTCDATETIME(),
+                    status = 'DELETED',
+                    updated_at = SYSUTCDATETIME()
+                WHERE id = @id AND is_deleted = 0";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", companyId);
+
+            var rows = await cmd.ExecuteNonQueryAsync();
+            return rows > 0;
+        }
+
+        /// <summary>
+        /// Get company by ID including all status and audit fields
+        /// </summary>
+        public async Task<Company?> GetByIdWithDetailsAsync(int id)
+        {
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            const string sql = @"
+                SELECT id, company_name, email, password_hash, status, created_at,
+                       description, industry, website, location, phone, logo_url,
+                       rejection_reason, approved_by, approved_at, updated_by, updated_at,
+                       admin_notes, is_deleted, deleted_at, suspension_reason
+                FROM companies
+                WHERE id = @id";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+
+            return new Company
+            {
+                Id = reader.GetInt32(reader.GetOrdinal("id")),
+                CompanyName = reader.GetString(reader.GetOrdinal("company_name")),
+                Email = reader.GetString(reader.GetOrdinal("email")),
+                PasswordHash = reader.GetString(reader.GetOrdinal("password_hash")),
+                Status = reader.GetString(reader.GetOrdinal("status")),
+                CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at")),
+                Description = reader.IsDBNull(reader.GetOrdinal("description")) ? null : reader.GetString(reader.GetOrdinal("description")),
+                Industry = reader.IsDBNull(reader.GetOrdinal("industry")) ? null : reader.GetString(reader.GetOrdinal("industry")),
+                Website = reader.IsDBNull(reader.GetOrdinal("website")) ? null : reader.GetString(reader.GetOrdinal("website")),
+                Location = reader.IsDBNull(reader.GetOrdinal("location")) ? null : reader.GetString(reader.GetOrdinal("location")),
+                Phone = reader.IsDBNull(reader.GetOrdinal("phone")) ? null : reader.GetString(reader.GetOrdinal("phone")),
+                LogoUrl = reader.IsDBNull(reader.GetOrdinal("logo_url")) ? null : reader.GetString(reader.GetOrdinal("logo_url")),
+                RejectionReason = reader.IsDBNull(reader.GetOrdinal("rejection_reason")) ? null : reader.GetString(reader.GetOrdinal("rejection_reason")),
+                ApprovedBy = reader.IsDBNull(reader.GetOrdinal("approved_by")) ? null : reader.GetInt32(reader.GetOrdinal("approved_by")),
+                ApprovedAt = reader.IsDBNull(reader.GetOrdinal("approved_at")) ? null : reader.GetDateTime(reader.GetOrdinal("approved_at")),
+                UpdatedBy = reader.IsDBNull(reader.GetOrdinal("updated_by")) ? null : reader.GetInt32(reader.GetOrdinal("updated_by")),
+                UpdatedAt = reader.IsDBNull(reader.GetOrdinal("updated_at")) ? null : reader.GetDateTime(reader.GetOrdinal("updated_at")),
+                AdminNotes = reader.IsDBNull(reader.GetOrdinal("admin_notes")) ? null : reader.GetString(reader.GetOrdinal("admin_notes")),
+                IsDeleted = reader.GetBoolean(reader.GetOrdinal("is_deleted")),
+                DeletedAt = reader.IsDBNull(reader.GetOrdinal("deleted_at")) ? null : reader.GetDateTime(reader.GetOrdinal("deleted_at")),
+                SuspensionReason = reader.IsDBNull(reader.GetOrdinal("suspension_reason")) ? null : reader.GetString(reader.GetOrdinal("suspension_reason"))
+            };
+        }
+
+        /// <summary>
+        /// Validate status transition for company
+        /// </summary>
+        public bool IsValidStatusTransition(string currentStatus, string newStatus)
+        {
+            var allowedTransitions = new Dictionary<string, HashSet<string>>
+            {
+                ["PENDING_APPROVAL"] = new() { "APPROVED", "REJECTED", "SUSPENDED" },
+                ["APPROVED"] = new() { "SUSPENDED" },
+                ["REJECTED"] = new() { "SUSPENDED" },
+                ["SUSPENDED"] = new() { "APPROVED", "REJECTED" },
+                ["DELETED"] = new() { }
+            };
+
+            if (!allowedTransitions.ContainsKey(currentStatus))
+                return false;
+
+            return allowedTransitions[currentStatus].Contains(newStatus);
         }
 
         // ========== PRIVATE HELPER METHODS ==========

@@ -12,6 +12,9 @@ namespace PATHFINDER_BACKEND.Models
         public string PasswordHash { get; set; } = "";
         public string Status { get; set; } = "PENDING_APPROVAL";
         public DateTime CreatedAt { get; set; }
+        public bool IsDeleted { get; set; }
+        public DateTime? DeletedAt { get; set; }
+        public string? SuspensionReason { get; set; }
 
         // Profile fields
         public string? Description { get; set; }
