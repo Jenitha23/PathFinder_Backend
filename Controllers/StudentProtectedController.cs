@@ -25,20 +25,19 @@ namespace PATHFINDER_BACKEND.Controllers
         /// </summary>
         [Authorize(Roles = "STUDENT")]
         [HttpGet("me")]
-        public IActionResult Me()
+        public async Task<IActionResult> Me()
         {
-            // Prefer stable claim lookups (avoid string contains).
-            var userId = User.FindFirst("userId")?.Value
-                      ?? User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+            if (!TryGetCurrentStudentId(out var studentId)) return Unauthorized("Invalid token claims.");
 
-            var email = User.FindFirst(JwtRegisteredClaimNames.Email)?.Value
-                     ?? User.FindFirst(ClaimTypes.Email)?.Value;
+            var student = await _repo.GetByIdAsync(studentId);
+            if (student == null) return NotFound("Student not found.");
 
             return Ok(new
             {
                 message = "You are authorized as STUDENT",
-                userId,
-                email
+                userId = student.Id,
+                email = student.Email,
+                fullName = student.FullName
             });
         }
 
