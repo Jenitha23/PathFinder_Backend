@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using PATHFINDER_BACKEND.DTOs;
 using PATHFINDER_BACKEND.Models;
 using PATHFINDER_BACKEND.Repositories;
+using PATHFINDER_BACKEND.Services;
 
 namespace PATHFINDER_BACKEND.Controllers
 {
@@ -16,19 +17,22 @@ namespace PATHFINDER_BACKEND.Controllers
         private readonly AdminRepository _adminRepo;
         private readonly ApplicationRepository _applicationRepo;
         private readonly CompanyJobRepository _companyJobRepo;
+        private readonly JwtTokenService _jwt;
 
         public AdminUserManagementController(
             StudentRepository studentRepo,
             CompanyRepository companyRepo,
             AdminRepository adminRepo,
             ApplicationRepository applicationRepo,
-            CompanyJobRepository companyJobRepo)
+            CompanyJobRepository companyJobRepo,
+            JwtTokenService jwt)
         {
             _studentRepo = studentRepo;
             _companyRepo = companyRepo;
             _adminRepo = adminRepo;
             _applicationRepo = applicationRepo;
             _companyJobRepo = companyJobRepo;
+            _jwt = jwt;
         }
 
         #region ========== STUDENT MANAGEMENT ==========
@@ -58,10 +62,10 @@ namespace PATHFINDER_BACKEND.Controllers
                     FullName = student.FullName,
                     Email = student.Email,
                     Role = "STUDENT",
-                    Status = "ACTIVE", // Default status until you add the column
+                    Status = student.Status ?? "ACTIVE",
                     CreatedAt = student.CreatedAt,
-                    UpdatedAt = null,
-                    SuspensionReason = null,
+                    UpdatedAt = student.UpdatedAt,
+                    SuspensionReason = student.SuspensionReason,
                     ApplicationsCount = applicationCount,
                     HasProfile = !string.IsNullOrWhiteSpace(student.FullName)
                 });
@@ -95,10 +99,10 @@ namespace PATHFINDER_BACKEND.Controllers
                 student.FullName,
                 student.Email,
                 role = "STUDENT",
-                status = "ACTIVE",
+                status = student.Status ?? "ACTIVE",
                 student.CreatedAt,
-                updatedAt = (DateTime?)null,
-                suspensionReason = (string?)null,
+                updatedAt = student.UpdatedAt,
+                suspensionReason = student.SuspensionReason,
                 applicationsCount = applicationCount,
                 hasProfile = !string.IsNullOrWhiteSpace(student.FullName)
             });
@@ -125,12 +129,19 @@ namespace PATHFINDER_BACKEND.Controllers
                     return Conflict(new { message = $"Email '{req.Email}' is already registered by another student." });
             }
 
-            var updated = await _studentRepo.UpdateProfileAsync(studentId, req.FullName.Trim(), normalizedEmail);
+            var updated = await _studentRepo.UpdateByAdminAsync(
+                studentId,
+                req.FullName.Trim(),
+                normalizedEmail,
+                req.Status,
+                req.SuspensionReason
+            );
+
             if (!updated)
                 return StatusCode(500, new { message = "Failed to update student account." });
 
-            await LogAuditAsync(adminId, "UPDATE_STUDENT", studentId.ToString(), student.Email, 
-                $"Updated student {studentId}");
+            await LogAuditAsync(adminId, "UPDATE_STUDENT", studentId.ToString(), student.Email,
+                $"Updated student {studentId}. Status: {req.Status}, Suspension Reason: {req.SuspensionReason ?? "None"}");
 
             return Ok(new
             {
@@ -142,7 +153,8 @@ namespace PATHFINDER_BACKEND.Controllers
                     fullName = req.FullName.Trim(),
                     email = normalizedEmail,
                     role = "STUDENT",
-                    status = req.Status
+                    status = req.Status,
+                    suspensionReason = req.SuspensionReason
                 }
             });
         }
@@ -157,12 +169,12 @@ namespace PATHFINDER_BACKEND.Controllers
             if (student == null)
                 return NotFound(new { message = $"Student with ID {studentId} not found." });
 
-            var deleted = await _studentRepo.DeleteByIdAsync(studentId);
+            var deleted = await _studentRepo.SoftDeleteAsync(studentId);
             if (!deleted)
                 return StatusCode(500, new { message = "Failed to delete student account." });
 
-            await LogAuditAsync(adminId, "DELETE_STUDENT", studentId.ToString(), student.Email, 
-                $"Deleted student {studentId}: {student.FullName}");
+            await LogAuditAsync(adminId, "DELETE_STUDENT", studentId.ToString(), student.Email,
+                $"Soft deleted student {studentId}: {student.FullName}");
 
             return Ok(new AdminDeleteResponse
             {
@@ -172,7 +184,7 @@ namespace PATHFINDER_BACKEND.Controllers
                 UserType = "STUDENT",
                 Email = student.Email,
                 Name = student.FullName,
-                IsSoftDelete = false,
+                IsSoftDelete = true,
                 DeletedAt = DateTime.UtcNow
             });
         }
@@ -209,12 +221,12 @@ namespace PATHFINDER_BACKEND.Controllers
                     Status = company.Status,
                     CreatedAt = company.CreatedAt,
                     UpdatedAt = company.UpdatedAt,
-                    SuspensionReason = null,
+                    SuspensionReason = company.SuspensionReason,
                     Industry = company.Industry,
                     LogoUrl = company.LogoUrl,
                     JobsCount = jobs.Count,
                     ApplicationsCount = 0,
-                    HasCompleteProfile = !string.IsNullOrWhiteSpace(company.Description) && 
+                    HasCompleteProfile = !string.IsNullOrWhiteSpace(company.Description) &&
                                         !string.IsNullOrWhiteSpace(company.Industry)
                 });
             }
@@ -259,8 +271,9 @@ namespace PATHFINDER_BACKEND.Controllers
                 company.RejectionReason,
                 company.ApprovedAt,
                 company.AdminNotes,
+                company.SuspensionReason,
                 jobsCount = jobs.Count,
-                hasCompleteProfile = !string.IsNullOrWhiteSpace(company.Description) && 
+                hasCompleteProfile = !string.IsNullOrWhiteSpace(company.Description) &&
                                     !string.IsNullOrWhiteSpace(company.Industry)
             });
         }
@@ -286,7 +299,8 @@ namespace PATHFINDER_BACKEND.Controllers
                     return Conflict(new { message = $"Email '{req.Email}' is already registered by another company." });
             }
 
-            if (!IsValidCompanyStatusTransition(company.Status, req.Status))
+            // ONLY validate status transition if status is actually changing
+            if (company.Status != req.Status && !IsValidCompanyStatusTransition(company.Status, req.Status))
             {
                 return BadRequest(new
                 {
@@ -294,30 +308,42 @@ namespace PATHFINDER_BACKEND.Controllers
                 });
             }
 
-            var updated = await _companyRepo.UpdateProfileAsync(companyId, req.CompanyName.Trim(), normalizedEmail);
+            // Determine which status to use (current or new)
+            var finalStatus = company.Status != req.Status ? req.Status : company.Status;
+
+            var updated = await _companyRepo.UpdateByAdminAsync(
+                companyId,
+                req.CompanyName.Trim(),
+                normalizedEmail,
+                finalStatus,
+                adminId,
+                req.SuspensionReason,
+                req.AdminNotes
+            );
+
             if (!updated)
                 return StatusCode(500, new { message = "Failed to update company account." });
 
-            // Also update status if changed
-            if (company.Status != req.Status)
-            {
-                await _companyRepo.UpdateStatusAsync(companyId, req.Status);
-            }
+            // Generate a new JWT token for the company with updated information
+            var newToken = _jwt.CreateToken(companyId, normalizedEmail, "COMPANY", req.CompanyName.Trim());
 
-            await LogAuditAsync(adminId, "UPDATE_COMPANY", companyId.ToString(), company.Email, 
-                $"Updated company {companyId}. Status changed from {company.Status} to {req.Status}");
+            await LogAuditAsync(adminId, "UPDATE_COMPANY", companyId.ToString(), company.Email,
+                $"Updated company {companyId}. Status: {finalStatus}. Suspension: {req.SuspensionReason ?? "None"}");
 
             return Ok(new
             {
                 success = true,
                 message = "Company account updated successfully.",
+                newToken = newToken,
+                requiresRefresh = true,
                 user = new
                 {
                     companyId,
                     companyName = req.CompanyName.Trim(),
                     email = normalizedEmail,
                     role = "COMPANY",
-                    status = req.Status
+                    status = finalStatus,
+                    suspensionReason = req.SuspensionReason
                 }
             });
         }
@@ -332,12 +358,12 @@ namespace PATHFINDER_BACKEND.Controllers
             if (company == null)
                 return NotFound(new { message = $"Company with ID {companyId} not found." });
 
-            var deleted = await _companyRepo.DeleteByIdAsync(companyId);
+            var deleted = await _companyRepo.SoftDeleteAsync(companyId);
             if (!deleted)
                 return StatusCode(500, new { message = "Failed to delete company account." });
 
-            await LogAuditAsync(adminId, "DELETE_COMPANY", companyId.ToString(), company.Email, 
-                $"Deleted company {companyId}: {company.CompanyName}");
+            await LogAuditAsync(adminId, "DELETE_COMPANY", companyId.ToString(), company.Email,
+                $"Soft deleted company {companyId}: {company.CompanyName}");
 
             return Ok(new AdminDeleteResponse
             {
@@ -347,7 +373,7 @@ namespace PATHFINDER_BACKEND.Controllers
                 UserType = "COMPANY",
                 Email = company.Email,
                 Name = company.CompanyName,
-                IsSoftDelete = false,
+                IsSoftDelete = true,
                 DeletedAt = DateTime.UtcNow
             });
         }
@@ -368,16 +394,16 @@ namespace PATHFINDER_BACKEND.Controllers
             var stats = new AdminUserStatsResponse
             {
                 TotalStudents = allStudents.Count,
-                ActiveStudents = allStudents.Count,
-                SuspendedStudents = 0,
-                DeletedStudents = 0,
+                ActiveStudents = allStudents.Count(s => s.Status == "ACTIVE"),
+                SuspendedStudents = allStudents.Count(s => s.Status == "SUSPENDED"),
+                DeletedStudents = allStudents.Count(s => s.Status == "DELETED"),
                 
                 TotalCompanies = allCompanies.Count,
                 PendingCompanies = allCompanies.Count(c => c.Status == "PENDING_APPROVAL"),
                 ApprovedCompanies = allCompanies.Count(c => c.Status == "APPROVED"),
                 RejectedCompanies = allCompanies.Count(c => c.Status == "REJECTED"),
-                SuspendedCompanies = 0,
-                DeletedCompanies = 0,
+                SuspendedCompanies = allCompanies.Count(c => c.Status == "SUSPENDED"),
+                DeletedCompanies = allCompanies.Count(c => c.Status == "DELETED"),
                 
                 GeneratedAt = DateTime.UtcNow
             };
@@ -409,6 +435,11 @@ namespace PATHFINDER_BACKEND.Controllers
                 filtered = filtered.Where(s => 
                     s.FullName.ToLower().Contains(search) || 
                     s.Email.ToLower().Contains(search));
+            }
+            
+            if (!string.IsNullOrWhiteSpace(status) && status != "ALL")
+            {
+                filtered = filtered.Where(s => s.Status == status);
             }
             
             var totalCount = filtered.Count();
@@ -464,8 +495,8 @@ namespace PATHFINDER_BACKEND.Controllers
         {
             try
             {
-                Console.WriteLine($"AUDIT: Admin {adminId} - {action} - {entityId} - {entityEmail} - {details}");
-                await Task.CompletedTask; // This removes the warning
+                Console.WriteLine($"AUDIT: Admin {adminId} - {action} - {entityId} - {entityEmail} - {details} at {DateTime.UtcNow}");
+                await Task.CompletedTask;
             }
             catch
             {
