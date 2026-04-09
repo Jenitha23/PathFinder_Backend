@@ -26,6 +26,7 @@ builder.Services.AddScoped<CompanyJobRepository>();
 builder.Services.AddScoped<ApplicationRepository>();        
 builder.Services.AddScoped<JobRepository>();               
 builder.Services.AddScoped<StudentProfileRepository>();
+builder.Services.AddScoped<DashboardRepository>();
 
 // Services: stateless helpers (hashing, token creation, revocation tracking)
 builder.Services.AddSingleton<PasswordService>();
