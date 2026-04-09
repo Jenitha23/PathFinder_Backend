@@ -29,6 +29,7 @@ namespace PATHFINDER_BACKEND.Controllers
         /// Fetches fresh data from database instead of JWT claims.
         /// </summary>
         [HttpGet("me")]
+        [Authorize(Roles = "COMPANY")]
         public async Task<IActionResult> Me()
         {
             if (!TryGetCurrentCompanyId(out var companyId))
