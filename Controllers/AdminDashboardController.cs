@@ -267,6 +267,46 @@ namespace PATHFINDER_BACKEND.Controllers
             });
         }
 
+        /// <summary>
+        /// GET /api/admin/dashboard/jobs-per-month-report
+        /// Admin version of jobs per month report with filtering by year or date range.
+        /// </summary>
+        [HttpGet("jobs-per-month-report")]
+        public async Task<IActionResult> GetJobsPerMonthReport([FromQuery] JobsPerMonthReportRequest request)
+        {
+            if (!TryGetCurrentAdminId(out var adminId))
+                return Unauthorized(new { message = "Invalid token claims." });
+
+            var admin = await _adminRepo.GetByIdAsync(adminId);
+            if (admin == null)
+                return Unauthorized(new { message = "Admin not found." });
+
+            // Admin sees all companies (companyId = null)
+            var chart = await _dashboardRepo.GetJobsPerMonthReportAsync(
+                companyId: null,
+                year: request.Year,
+                startDate: request.StartDate,
+                endDate: request.EndDate
+            );
+
+            if (chart.Labels == null || chart.Labels.Count == 0)
+            {
+                return Ok(new
+                {
+                    message = "No jobs posted in the selected period.",
+                    isEmpty = true,
+                    data = chart
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Jobs per month report retrieved successfully.",
+                isEmpty = false,
+                data = chart
+            });
+        }
+
         #region Private Helper Methods
 
         private bool TryGetCurrentAdminId(out int adminId)
