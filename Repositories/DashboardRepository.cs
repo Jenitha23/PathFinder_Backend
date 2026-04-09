@@ -433,5 +433,86 @@ namespace PATHFINDER_BACKEND.Repositories
 
             return $"Until {endDate:MMMM d, yyyy}";
         }
+
+        // ========== NEW METHOD FOR JOBS PER MONTH REPORT (with year/date range filtering) ==========
+
+        /// <summary>
+        /// Gets jobs per month data for a specific company (or all if companyId = null) with filtering.
+        /// Used by company and admin reports.
+        /// </summary>
+        /// <param name="companyId">If provided, filter jobs by this company. Null = all companies (admin).</param>
+        /// <param name="year">Optional specific year.</param>
+        /// <param name="startDate">Optional custom start date (overridden by year if provided).</param>
+        /// <param name="endDate">Optional custom end date.</param>
+        public async Task<JobsPerMonthChart> GetJobsPerMonthReportAsync(
+            int? companyId,
+            int? year,
+            DateTime? startDate,
+            DateTime? endDate)
+        {
+            var (start, end) = new JobsPerMonthReportRequest
+            {
+                Year = year,
+                StartDate = startDate,
+                EndDate = endDate
+            }.GetNormalizedDates();
+
+            var chart = new JobsPerMonthChart();
+            var labels = new List<string>();
+            var jobCounts = new List<int>();
+
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            var sql = @"
+                SELECT 
+                    FORMAT(created_at, 'yyyy-MM') AS MonthKey,
+                    FORMAT(created_at, 'MMM yyyy') AS MonthName,
+                    COUNT(*) AS JobCount
+                FROM dbo.jobs
+                WHERE (is_deleted IS NULL OR is_deleted = 0)
+                    AND created_at >= @startDate
+                    AND created_at <= @endDate";
+
+            var parameters = new List<SqlParameter>
+            {
+                new SqlParameter("@startDate", start),
+                new SqlParameter("@endDate", end)
+            };
+
+            if (companyId.HasValue && companyId.Value > 0)
+            {
+                sql += " AND company_id = @companyId";
+                parameters.Add(new SqlParameter("@companyId", companyId.Value));
+            }
+
+            sql += @" GROUP BY FORMAT(created_at, 'yyyy-MM'), FORMAT(created_at, 'MMM yyyy')
+                      ORDER BY MIN(created_at) ASC";
+
+            using var cmd = new SqlCommand(sql, conn);
+            foreach (var p in parameters)
+                cmd.Parameters.Add(p);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                labels.Add(reader.GetString(reader.GetOrdinal("MonthName")));
+                jobCounts.Add(reader.GetInt32(reader.GetOrdinal("JobCount")));
+            }
+
+            chart.Labels = labels;
+            if (jobCounts.Count > 0)
+            {
+                chart.Datasets.Add(new JobsPerMonthDataPoint
+                {
+                    Label = "Jobs Posted",
+                    Data = jobCounts,
+                    BorderColor = "#3B82F6",
+                    BackgroundColor = "rgba(59, 130, 246, 0.1)"
+                });
+            }
+
+            return chart;
+        }
     }
 }
