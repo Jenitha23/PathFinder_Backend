@@ -646,7 +646,7 @@ namespace PATHFINDER_BACKEND.Repositories
                     admin_notes = @adminNotes,
                     updated_by = @adminId,
                     updated_at = SYSUTCDATETIME()
-                WHERE id = @id AND is_deleted = 0";
+                WHERE id = @id";  // ← REMOVED "AND is_deleted = 0"
 
             await using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@companyName", companyName);

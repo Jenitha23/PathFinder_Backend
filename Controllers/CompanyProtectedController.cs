@@ -26,20 +26,27 @@ namespace PATHFINDER_BACKEND.Controllers
 
         /// <summary>
         /// Protected endpoint accessible only to authenticated COMPANY role.
-        /// Demonstrates role-based authorization using JWT.
+        /// Fetches fresh data from database instead of JWT claims.
         /// </summary>
-        [Authorize(Roles = "COMPANY")]
         [HttpGet("me")]
-        public IActionResult Me()
+        [Authorize(Roles = "COMPANY")]
+        public async Task<IActionResult> Me()
         {
+            if (!TryGetCurrentCompanyId(out var companyId))
+                return Unauthorized("Invalid token claims.");
+
+            // ✅ Always fetch from database to get latest updates
+            var company = await _repo.GetByIdAsync(companyId);
+            if (company == null) return NotFound("Company not found.");
+
             return Ok(new
             {
                 message = "You are authorized as COMPANY",
-
-                // Retrieved from custom JWT claims
-                userId = User.FindFirst("userId")?.Value,
-                email = User.Claims.FirstOrDefault(c => c.Type.Contains("email"))?.Value,
-                name = User.Claims.FirstOrDefault(c => c.Type == "fullName")?.Value
+                userId = company.Id,
+                email = company.Email,
+                companyName = company.CompanyName,
+                role = "COMPANY",
+                status = company.Status
             });
         }
 
