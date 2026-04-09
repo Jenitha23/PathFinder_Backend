@@ -514,5 +514,104 @@ namespace PATHFINDER_BACKEND.Repositories
 
             return chart;
         }
+
+        // ========== NEW METHOD FOR APPLICATIONS PER JOB REPORT ==========
+
+        /// <summary>
+        /// Gets applications per job report with filtering by company and optional jobId.
+        /// </summary>
+        /// <param name="companyId">If provided (non-null), filter jobs by this company. Admin passes null.</param>
+        /// <param name="jobId">Optional specific job ID (must belong to company if companyId provided).</param>
+        /// <param name="startDate">Start date for applications applied_date</param>
+        /// <param name="endDate">End date for applications applied_date</param>
+        public async Task<ApplicationsPerJobReportResponse> GetApplicationsPerJobReportAsync(
+            int? companyId,
+            int? jobId,
+            DateTime? startDate,
+            DateTime? endDate)
+        {
+            var (start, end) = new ApplicationsPerJobReportRequest
+            {
+                StartDate = startDate,
+                EndDate = endDate
+            }.GetNormalizedDates();
+
+            var response = new ApplicationsPerJobReportResponse();
+            var items = new List<ApplicationsPerJobItem>();
+
+            await using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+
+            var sql = @"
+                SELECT 
+                    j.id AS JobId,
+                    j.title AS JobTitle,
+                    c.company_name AS CompanyName,
+                    j.created_at AS JobPostedDate,
+                    COUNT(a.id) AS TotalApplications,
+                    SUM(CASE WHEN a.status = 'Pending' THEN 1 ELSE 0 END) AS PendingCount,
+                    SUM(CASE WHEN a.status = 'Shortlisted' THEN 1 ELSE 0 END) AS ShortlistedCount,
+                    SUM(CASE WHEN a.status = 'Rejected' THEN 1 ELSE 0 END) AS RejectedCount,
+                    SUM(CASE WHEN a.status = 'Accepted' THEN 1 ELSE 0 END) AS AcceptedCount
+                FROM dbo.jobs j
+                INNER JOIN dbo.companies c ON j.company_id = c.id
+                LEFT JOIN dbo.applications a ON a.job_id = j.id
+                    AND a.applied_date >= @startDate
+                    AND a.applied_date <= @endDate
+                WHERE (j.is_deleted IS NULL OR j.is_deleted = 0)";
+
+            var parameters = new List<SqlParameter>
+            {
+                new SqlParameter("@startDate", start),
+                new SqlParameter("@endDate", end)
+            };
+
+            if (companyId.HasValue && companyId.Value > 0)
+            {
+                sql += " AND j.company_id = @companyId";
+                parameters.Add(new SqlParameter("@companyId", companyId.Value));
+            }
+
+            if (jobId.HasValue && jobId.Value > 0)
+            {
+                sql += " AND j.id = @jobId";
+                parameters.Add(new SqlParameter("@jobId", jobId.Value));
+            }
+
+            sql += @" GROUP BY j.id, j.title, c.company_name, j.created_at
+                      ORDER BY TotalApplications DESC, j.created_at DESC";
+
+            using var cmd = new SqlCommand(sql, conn);
+            foreach (var p in parameters)
+                cmd.Parameters.Add(p);
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            int totalApps = 0;
+            while (await reader.ReadAsync())
+            {
+                var total = reader.GetInt32(reader.GetOrdinal("TotalApplications"));
+                totalApps += total;
+
+                items.Add(new ApplicationsPerJobItem
+                {
+                    JobId = reader.GetInt32(reader.GetOrdinal("JobId")),
+                    JobTitle = reader.GetString(reader.GetOrdinal("JobTitle")),
+                    CompanyName = reader.GetString(reader.GetOrdinal("CompanyName")),
+                    JobPostedDate = reader.GetDateTime(reader.GetOrdinal("JobPostedDate")),
+                    TotalApplications = total,
+                    PendingCount = reader.GetInt32(reader.GetOrdinal("PendingCount")),
+                    ShortlistedCount = reader.GetInt32(reader.GetOrdinal("ShortlistedCount")),
+                    RejectedCount = reader.GetInt32(reader.GetOrdinal("RejectedCount")),
+                    AcceptedCount = reader.GetInt32(reader.GetOrdinal("AcceptedCount"))
+                });
+            }
+
+            response.Items = items;
+            response.TotalJobs = items.Count;
+            response.TotalApplications = totalApps;
+            response.IsEmpty = items.Count == 0;
+
+            return response;
+        }
     }
 }

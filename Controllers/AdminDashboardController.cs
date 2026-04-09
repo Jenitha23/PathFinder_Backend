@@ -307,6 +307,48 @@ namespace PATHFINDER_BACKEND.Controllers
             });
         }
 
+        /// <summary>
+        /// GET /api/admin/dashboard/applications-per-job
+        /// Returns applications per job report for admin (all companies).
+        /// Optional filters: jobId, startDate, endDate.
+        /// </summary>
+        [HttpGet("applications-per-job")]
+        public async Task<IActionResult> GetApplicationsPerJobReport([FromQuery] ApplicationsPerJobReportRequest request)
+        {
+            if (!TryGetCurrentAdminId(out var adminId))
+                return Unauthorized(new { message = "Invalid token claims." });
+
+            var admin = await _adminRepo.GetByIdAsync(adminId);
+            if (admin == null)
+                return Unauthorized(new { message = "Admin not found." });
+
+            var (startDate, endDate) = request.GetNormalizedDates();
+
+            var report = await _dashboardRepo.GetApplicationsPerJobReportAsync(
+                companyId: null,  // admin sees all companies
+                jobId: request.JobId,
+                startDate: startDate,
+                endDate: endDate
+            );
+
+            if (report.IsEmpty)
+            {
+                return Ok(new
+                {
+                    message = "No applications found for the selected period.",
+                    isEmpty = true,
+                    report
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Applications per job report retrieved successfully.",
+                isEmpty = false,
+                report
+            });
+        }
+
         #region Private Helper Methods
 
         private bool TryGetCurrentAdminId(out int adminId)
