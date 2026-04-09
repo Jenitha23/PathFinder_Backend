@@ -37,6 +37,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Token revocation is stored in-memory (sufficient for single-instance demo).
 builder.Services.AddSingleton<TokenRevocationService>();
+builder.Services.AddApplicationInsightsTelemetry();
 
 // JWT Authentication settings
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new Exception("Jwt:Key missing in appsettings.json");

@@ -67,3 +67,4 @@ jobs:
           app-settings: |
             BlobConnectionString=${{ secrets.AZURE_BLOB_CONNECTION_STRING }}
             BlobContainerName=${{ secrets.AZURE_BLOB_CONTAINER_NAME }}
+            ApplicationInsights__ConnectionString=${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}
