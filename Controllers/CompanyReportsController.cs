@@ -14,11 +14,16 @@ namespace PATHFINDER_BACKEND.Controllers
     {
         private readonly DashboardRepository _dashboardRepo;
         private readonly CompanyRepository _companyRepo;
+        private readonly CompanyJobRepository _jobRepo;  // Added for job ownership validation
 
-        public CompanyReportsController(DashboardRepository dashboardRepo, CompanyRepository companyRepo)
+        public CompanyReportsController(
+            DashboardRepository dashboardRepo, 
+            CompanyRepository companyRepo,
+            CompanyJobRepository jobRepo)  // Added dependency
         {
             _dashboardRepo = dashboardRepo;
             _companyRepo = companyRepo;
+            _jobRepo = jobRepo;  // Store for validation
         }
 
         /// <summary>
@@ -61,6 +66,59 @@ namespace PATHFINDER_BACKEND.Controllers
                 message = "Jobs per month report retrieved successfully.",
                 isEmpty = false,
                 data = chart
+            });
+        }
+
+        /// <summary>
+        /// GET /api/company/reports/applications-per-job
+        /// Returns applications per job report for the authenticated company.
+        /// Can filter by optional jobId (must belong to company) and date range.
+        /// </summary>
+        [HttpGet("applications-per-job")]
+        public async Task<IActionResult> GetApplicationsPerJobReport([FromQuery] ApplicationsPerJobReportRequest request)
+        {
+            if (!TryGetCurrentCompanyId(out var companyId))
+                return Unauthorized(new { message = "Invalid token claims." });
+
+            var company = await _companyRepo.GetByIdAsync(companyId);
+            if (company == null)
+                return NotFound(new { message = "Company not found." });
+
+            if (!string.Equals(company.Status, "APPROVED", StringComparison.OrdinalIgnoreCase))
+                return Unauthorized(new { message = $"Company account is not approved. Status: {company.Status}" });
+
+            // If a specific jobId is provided, verify it belongs to this company
+            if (request.JobId.HasValue)
+            {
+                var job = await _jobRepo.GetJobByCompanyAndIdAsync(companyId, request.JobId.Value);
+                if (job == null)
+                    return BadRequest(new { message = "Job not found or does not belong to your company." });
+            }
+
+            var (startDate, endDate) = request.GetNormalizedDates();
+
+            var report = await _dashboardRepo.GetApplicationsPerJobReportAsync(
+                companyId: companyId,
+                jobId: request.JobId,
+                startDate: startDate,
+                endDate: endDate
+            );
+
+            if (report.IsEmpty)
+            {
+                return Ok(new
+                {
+                    message = "No applications found for the selected period.",
+                    isEmpty = true,
+                    report
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Applications per job report retrieved successfully.",
+                isEmpty = false,
+                report
             });
         }
 
