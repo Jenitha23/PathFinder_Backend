@@ -9,7 +9,7 @@ namespace PATHFINDER_BACKEND.Services
     {
         private readonly HttpClient _httpClient;
         private readonly string _apiKey;
-        private readonly string _model = "gemini-2.0-flash-exp";
+        private readonly string _model = "gemini-2.5-flash";
         private readonly ILogger<GeminiAIService> _logger;
 
         public GeminiAIService(IConfiguration configuration, ILogger<GeminiAIService> logger)

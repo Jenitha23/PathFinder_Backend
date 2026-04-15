@@ -16,19 +16,22 @@ namespace PATHFINDER_BACKEND.Controllers
         private readonly JobMatchingService _matchingService;
         private readonly ILogger<AIDashboardController> _logger;
         private readonly IWebHostEnvironment _env;
+        private readonly CvTextExtractorService _cvExtractor;
 
         public AIDashboardController(
             AiAnalyticsRepository aiRepo,
             AtsScoringService atsService,
             JobMatchingService matchingService,
             ILogger<AIDashboardController> logger,
-            IWebHostEnvironment env)
+            IWebHostEnvironment env,
+            CvTextExtractorService cvExtractor)
         {
             _aiRepo = aiRepo;
             _atsService = atsService;
             _matchingService = matchingService;
             _logger = logger;
             _env = env;
+            _cvExtractor = cvExtractor;
         }
 
         [HttpPost("student/ats/analyze")]
@@ -38,7 +41,8 @@ namespace PATHFINDER_BACKEND.Controllers
             try
             {
                 var studentId = GetCurrentUserId();
-                if (studentId == null) return Unauthorized(new { message = "Invalid token" });
+                if (studentId == null) 
+                    return Unauthorized(new { message = "Invalid token" });
 
                 var (cvUrl, skills, technicalSkills, education, university, degree) = 
                     await _aiRepo.GetStudentProfileForAnalysisAsync(studentId.Value);
@@ -46,20 +50,30 @@ namespace PATHFINDER_BACKEND.Controllers
                 if (string.IsNullOrEmpty(cvUrl))
                     return BadRequest(new { message = "Please upload your CV first.", code = "no_cv" });
 
-                var cvText = await ExtractTextFromCvAsync(cvUrl);
-                if (string.IsNullOrWhiteSpace(cvText))
-                    return BadRequest(new { message = "Could not extract text from CV.", code = "cv_parsing_error" });
+                string cvText;
+                try
+                {
+                    cvText = await _cvExtractor.ExtractTextFromCvAsync(cvUrl);
+                    if (string.IsNullOrWhiteSpace(cvText))
+                        return BadRequest(new { message = "Could not extract text from CV. Please ensure it's a valid PDF or DOCX file.", code = "cv_parsing_error" });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to extract text from CV for student {StudentId}", studentId);
+                    return StatusCode(500, new { message = "Failed to process CV file. Please try uploading again.", code = "cv_processing_error" });
+                }
 
                 AtsScoreResponse result;
 
                 if (request != null && request.JobId > 0)
                 {
                     var job = await _aiRepo.GetJobByIdAsync(request.JobId);
-                    if (job == null) return NotFound(new { message = "Job not found" });
+                    if (job == null) 
+                        return NotFound(new { message = "Job not found" });
 
-                    // FIXED: Removed the extra jobId parameter (5 arguments only)
                     result = await _atsService.AnalyzeCvAgainstJobAsync(
-                        cvText, job.Value.Item2, job.Value.Item3, job.Value.Item4, studentId.Value);
+                        cvText, job.Title, job.Description, job.Requirements, studentId.Value);
+                    result.JobId = request.JobId;
                 }
                 else
                 {
@@ -82,7 +96,8 @@ namespace PATHFINDER_BACKEND.Controllers
             try
             {
                 var studentId = GetCurrentUserId();
-                if (studentId == null) return Unauthorized(new { message = "Invalid token" });
+                if (studentId == null) 
+                    return Unauthorized(new { message = "Invalid token" });
 
                 var (cvUrl, skills, technicalSkills, education, university, degree) = 
                     await _aiRepo.GetStudentProfileForAnalysisAsync(studentId.Value);
@@ -90,7 +105,19 @@ namespace PATHFINDER_BACKEND.Controllers
                 if (string.IsNullOrEmpty(cvUrl))
                     return BadRequest(new { message = "Please upload your CV first.", code = "no_cv" });
 
-                var cvText = await ExtractTextFromCvAsync(cvUrl);
+                string cvText;
+                try
+                {
+                    cvText = await _cvExtractor.ExtractTextFromCvAsync(cvUrl);
+                    if (string.IsNullOrWhiteSpace(cvText))
+                        return BadRequest(new { message = "Could not extract text from CV. Please ensure it's a valid PDF or DOCX file.", code = "cv_parsing_error" });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to extract text from CV for student {StudentId}", studentId);
+                    return StatusCode(500, new { message = "Failed to process CV file. Please try uploading again.", code = "cv_processing_error" });
+                }
+
                 var allSkills = $"{skills ?? ""} {technicalSkills ?? ""}";
                 var allEducation = $"{education ?? ""} {university ?? ""} {degree ?? ""}";
 
@@ -99,25 +126,14 @@ namespace PATHFINDER_BACKEND.Controllers
                     return Ok(new BatchJobMatchesResponse { Matches = new(), TotalJobsAnalyzed = 0 });
 
                 var jobsToAnalyze = limit.HasValue ? jobs.Take(limit.Value).ToList() : jobs;
-                var matches = new List<JobMatchResponse>();
+                
+                var matches = await ProcessJobsInParallel(cvText, allSkills, allEducation, studentId.Value, jobsToAnalyze);
 
-                foreach (var job in jobsToAnalyze)
-                {
-                    try
-                    {
-                        var match = await _matchingService.CalculateMatchAsync(
-                            cvText, allSkills, allEducation, studentId.Value,
-                            job.Id, job.Title, job.Description, job.Requirements, job.CompanyName);
-                        matches.Add(match);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to match job {JobId}", job.Id);
-                    }
-                }
-
-                matches = matches.OrderByDescending(m => m.MatchPercentage).ToList();
-                return Ok(new BatchJobMatchesResponse { Matches = matches, TotalJobsAnalyzed = matches.Count });
+                return Ok(new BatchJobMatchesResponse 
+                { 
+                    Matches = matches.OrderByDescending(m => m.MatchPercentage).ToList(), 
+                    TotalJobsAnalyzed = matches.Count 
+                });
             }
             catch (Exception ex)
             {
@@ -133,10 +149,12 @@ namespace PATHFINDER_BACKEND.Controllers
             try
             {
                 var studentId = GetCurrentUserId();
-                if (studentId == null) return Unauthorized(new { message = "Invalid token" });
+                if (studentId == null) 
+                    return Unauthorized(new { message = "Invalid token" });
 
                 var job = await _aiRepo.GetJobByIdAsync(jobId);
-                if (job == null) return NotFound(new { message = "Job not found" });
+                if (job == null) 
+                    return NotFound(new { message = "Job not found" });
 
                 var (cvUrl, skills, technicalSkills, education, university, degree) = 
                     await _aiRepo.GetStudentProfileForAnalysisAsync(studentId.Value);
@@ -144,13 +162,25 @@ namespace PATHFINDER_BACKEND.Controllers
                 if (string.IsNullOrEmpty(cvUrl))
                     return BadRequest(new { message = "Please upload your CV first.", code = "no_cv" });
 
-                var cvText = await ExtractTextFromCvAsync(cvUrl);
+                string cvText;
+                try
+                {
+                    cvText = await _cvExtractor.ExtractTextFromCvAsync(cvUrl);
+                    if (string.IsNullOrWhiteSpace(cvText))
+                        return BadRequest(new { message = "Could not extract text from CV. Please ensure it's a valid PDF or DOCX file.", code = "cv_parsing_error" });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to extract text from CV for student {StudentId}", studentId);
+                    return StatusCode(500, new { message = "Failed to process CV file. Please try uploading again.", code = "cv_processing_error" });
+                }
+
                 var allSkills = $"{skills ?? ""} {technicalSkills ?? ""}";
                 var allEducation = $"{education ?? ""} {university ?? ""} {degree ?? ""}";
 
                 var match = await _matchingService.CalculateMatchAsync(
                     cvText, allSkills, allEducation, studentId.Value,
-                    job.Value.Item1, job.Value.Item2, job.Value.Item3, job.Value.Item4, job.Value.Item5);
+                    job.Id, job.Title, job.Description, job.Requirements, job.CompanyName);
 
                 return Ok(match);
             }
@@ -168,41 +198,64 @@ namespace PATHFINDER_BACKEND.Controllers
             try
             {
                 var companyId = GetCurrentCompanyId();
-                if (companyId == null) return Unauthorized(new { message = "Invalid token" });
+                if (companyId == null) 
+                    return Unauthorized(new { message = "Invalid token" });
 
                 var job = await _aiRepo.GetJobByIdAsync(jobId);
-                if (job == null || job.Value.Item6 != companyId.Value)
+                if (job == null || job.CompanyId != companyId.Value)
                     return NotFound(new { message = "Job not found or access denied" });
 
                 var applicants = await _aiRepo.GetApplicantsForJobAsync(jobId, companyId.Value);
                 if (applicants.Count == 0)
-                    return Ok(new RankedApplicantsResponse { JobId = jobId, JobTitle = job.Value.Item2, Applicants = new() });
+                    return Ok(new RankedApplicantsResponse { JobId = jobId, JobTitle = job.Title, Applicants = new() });
 
                 var rankedApplicants = new List<RankedApplicantResponse>();
-                foreach (var applicant in applicants)
+                
+                var semaphore = new SemaphoreSlim(3);
+                var tasks = applicants.Select(async applicant =>
                 {
-                    var mockCvText = $"Student {applicant.StudentName} with skills: {applicant.Skills ?? "Not specified"}";
-                    var match = await _matchingService.CalculateMatchAsync(
-                        mockCvText, applicant.Skills ?? "", "", applicant.StudentId,
-                        jobId, job.Value.Item2, job.Value.Item3, job.Value.Item4, job.Value.Item5);
-
-                    rankedApplicants.Add(new RankedApplicantResponse
+                    await semaphore.WaitAsync();
+                    try
                     {
-                        ApplicationId = applicant.ApplicationId,
-                        StudentId = applicant.StudentId,
-                        StudentName = applicant.StudentName,
-                        StudentEmail = applicant.StudentEmail,
-                        Rank = 0,
-                        AtsScore = match.MatchPercentage,
-                        MatchScore = match.MatchPercentage,
-                        Reasoning = match.Recommendation,
-                        TopSkills = match.MatchedSkills.Take(5).ToList(),
-                        MissingRequirements = match.MissingSkills.Take(5).ToList(),
-                        CvUrl = applicant.CvUrl,
-                        ApplicationStatus = applicant.Status,
-                        AppliedDate = applicant.AppliedDate
-                    });
-                }
+                        string cvText;
+                        if (!string.IsNullOrEmpty(applicant.CvUrl))
+                        {
+                            cvText = await _cvExtractor.ExtractTextFromCvAsync(applicant.CvUrl);
+                        }
+                        else
+                        {
+                            cvText = $"Student {applicant.StudentName} has not uploaded a CV.";
+                        }
+
+                        var match = await _matchingService.CalculateMatchAsync(
+                            cvText, applicant.Skills ?? "", "", applicant.StudentId,
+                            jobId, job.Title, job.Description, job.Requirements, job.CompanyName);
+
+                        return new RankedApplicantResponse
+                        {
+                            ApplicationId = applicant.ApplicationId,
+                            StudentId = applicant.StudentId,
+                            StudentName = applicant.StudentName,
+                            StudentEmail = applicant.StudentEmail,
+                            Rank = 0,
+                            AtsScore = match.MatchPercentage,
+                            MatchScore = match.MatchPercentage,
+                            Reasoning = match.Recommendation,
+                            TopSkills = match.MatchedSkills.Take(5).ToList(),
+                            MissingRequirements = match.MissingSkills.Take(5).ToList(),
+                            CvUrl = applicant.CvUrl,
+                            ApplicationStatus = applicant.Status,
+                            AppliedDate = applicant.AppliedDate
+                        };
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
+
+                var results = await Task.WhenAll(tasks);
+                rankedApplicants = results.ToList();
 
                 rankedApplicants = rankedApplicants.OrderByDescending(a => a.MatchScore)
                     .Select((a, index) => { a.Rank = index + 1; return a; }).ToList();
@@ -212,7 +265,7 @@ namespace PATHFINDER_BACKEND.Controllers
                 return Ok(new RankedApplicantsResponse
                 {
                     JobId = jobId,
-                    JobTitle = job.Value.Item2,
+                    JobTitle = job.Title,
                     Applicants = rankedApplicants,
                     TotalApplicants = rankedApplicants.Count,
                     AverageScore = averageScore
@@ -232,10 +285,17 @@ namespace PATHFINDER_BACKEND.Controllers
             try
             {
                 var stats = await _aiRepo.GetPlatformStatsAsync();
-                var skillDistribution = await _aiRepo.GetJobSkillDistributionAsync();
+                var skillDistribution = await _aiRepo.GetJobSkillDistributionFromDatabaseAsync();
 
                 var topSkills = skillDistribution.Take(10)
-                    .Select(kv => new SkillTrend { SkillName = kv.Key, JobPostingsCount = kv.Value })
+                    .Select(kv => new SkillTrend 
+                    { 
+                        SkillName = kv.Key, 
+                        JobPostingsCount = kv.Value,
+                        StudentsWithSkill = 0,
+                        GapCount = 0,
+                        GrowthRate = 0
+                    })
                     .ToList();
 
                 var insights = new AdminAiInsightsResponse
@@ -284,6 +344,35 @@ namespace PATHFINDER_BACKEND.Controllers
             }
         }
 
+        #region Private Helper Methods
+
+        private async Task<List<JobMatchResponse>> ProcessJobsInParallel(
+            string cvText, 
+            string allSkills, 
+            string allEducation, 
+            int studentId, 
+            List<JobInfo> jobs)
+        {
+            var semaphore = new SemaphoreSlim(5);
+            var tasks = jobs.Select(async job =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    return await _matchingService.CalculateMatchAsync(
+                        cvText, allSkills, allEducation, studentId,
+                        job.Id, job.Title, job.Description, job.Requirements, job.CompanyName);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            var results = await Task.WhenAll(tasks);
+            return results.ToList();
+        }
+
         private int? GetCurrentUserId()
         {
             var userIdStr = User.FindFirst("userId")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -296,11 +385,6 @@ namespace PATHFINDER_BACKEND.Controllers
             return int.TryParse(userIdStr, out var id) ? id : null;
         }
 
-        private async Task<string> ExtractTextFromCvAsync(string cvUrl)
-        {
-            _logger.LogWarning("CV text extraction simplified - using placeholder");
-            await Task.Delay(10);
-            return "Sample CV content with skills: C#, JavaScript, SQL, Teamwork, Leadership. Education: Bachelor's Degree in Computer Science.";
-        }
+        #endregion
     }
 }

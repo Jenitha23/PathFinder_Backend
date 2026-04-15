@@ -34,6 +34,7 @@ builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<BlobService>();
 builder.Services.AddScoped<LocalFileStorageService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<CvTextExtractorService>();
 
 //AI Services
 builder.Services.AddMemoryCache(); 

@@ -45,10 +45,10 @@ namespace PATHFINDER_BACKEND.Repositories
             return (null, null, null, null, null, null);
         }
 
-        public async Task<List<(int Id, string Title, string Description, string Requirements, string CompanyName)>> GetActiveJobsAsync()
+        public async Task<List<JobInfo>> GetActiveJobsAsync()
         {
             const string sql = @"
-                SELECT j.id, j.title, j.description, COALESCE(j.requirements, ''), c.company_name
+                SELECT j.id, j.title, j.description, COALESCE(j.requirements, ''), c.company_name, c.id as company_id
                 FROM dbo.jobs j
                 INNER JOIN dbo.companies c ON j.company_id = c.id
                 WHERE (j.is_deleted IS NULL OR j.is_deleted = 0)
@@ -56,7 +56,7 @@ namespace PATHFINDER_BACKEND.Repositories
                     AND c.status = 'APPROVED'
                 ORDER BY j.created_at DESC";
 
-            var jobs = new List<(int, string, string, string, string)>();
+            var jobs = new List<JobInfo>();
             using var conn = _db.CreateConnection();
             await conn.OpenAsync();
             using var cmd = new SqlCommand(sql, conn);
@@ -64,12 +64,20 @@ namespace PATHFINDER_BACKEND.Repositories
 
             while (await reader.ReadAsync())
             {
-                jobs.Add((reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4)));
+                jobs.Add(new JobInfo
+                {
+                    Id = reader.GetInt32(0),
+                    Title = reader.GetString(1),
+                    Description = reader.GetString(2),
+                    Requirements = reader.GetString(3),
+                    CompanyName = reader.GetString(4),
+                    CompanyId = reader.GetInt32(5)
+                });
             }
             return jobs;
         }
 
-        public async Task<(int Id, string Title, string Description, string Requirements, string CompanyName, int CompanyId)?> GetJobByIdAsync(int jobId)
+        public async Task<JobInfo?> GetJobByIdAsync(int jobId)
         {
             const string sql = @"
                 SELECT j.id, j.title, j.description, COALESCE(j.requirements, ''), c.company_name, c.id
@@ -85,13 +93,20 @@ namespace PATHFINDER_BACKEND.Repositories
 
             if (await reader.ReadAsync())
             {
-                return (reader.GetInt32(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt32(5));
+                return new JobInfo
+                {
+                    Id = reader.GetInt32(0),
+                    Title = reader.GetString(1),
+                    Description = reader.GetString(2),
+                    Requirements = reader.GetString(3),
+                    CompanyName = reader.GetString(4),
+                    CompanyId = reader.GetInt32(5)
+                };
             }
             return null;
         }
 
-        public async Task<List<(int ApplicationId, int StudentId, string StudentName, string StudentEmail, string? CvUrl, string? Skills, string Status, DateTime AppliedDate)>> 
-            GetApplicantsForJobAsync(int jobId, int companyId)
+        public async Task<List<ApplicantInfo>> GetApplicantsForJobAsync(int jobId, int companyId)
         {
             const string sql = @"
                 SELECT a.id, s.id, s.full_name, s.email, sp.cv_url, sp.skills, a.status, a.applied_date
@@ -103,7 +118,7 @@ namespace PATHFINDER_BACKEND.Repositories
                     AND (s.is_deleted IS NULL OR s.is_deleted = 0)
                 ORDER BY a.applied_date DESC";
 
-            var applicants = new List<(int, int, string, string, string?, string?, string, DateTime)>();
+            var applicants = new List<ApplicantInfo>();
             using var conn = _db.CreateConnection();
             await conn.OpenAsync();
             using var cmd = new SqlCommand(sql, conn);
@@ -113,14 +128,67 @@ namespace PATHFINDER_BACKEND.Repositories
 
             while (await reader.ReadAsync())
             {
-                applicants.Add((
-                    reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetString(3),
-                    reader.IsDBNull(4) ? null : reader.GetString(4),
-                    reader.IsDBNull(5) ? null : reader.GetString(5),
-                    reader.GetString(6), reader.GetDateTime(7)
-                ));
+                applicants.Add(new ApplicantInfo
+                {
+                    ApplicationId = reader.GetInt32(0),
+                    StudentId = reader.GetInt32(1),
+                    StudentName = reader.GetString(2),
+                    StudentEmail = reader.GetString(3),
+                    CvUrl = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    Skills = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Status = reader.GetString(6),
+                    AppliedDate = reader.GetDateTime(7)
+                });
             }
             return applicants;
+        }
+
+        /// <summary>
+        /// Get REAL skill distribution from job requirements (not hardcoded)
+        /// </summary>
+        public async Task<Dictionary<string, int>> GetJobSkillDistributionFromDatabaseAsync()
+        {
+            var skills = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            
+            const string sql = @"
+                SELECT requirements
+                FROM dbo.jobs
+                WHERE (is_deleted IS NULL OR is_deleted = 0)
+                    AND requirements IS NOT NULL";
+
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(sql, conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            var commonSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "C#", "JavaScript", "Python", "Java", "SQL", "TypeScript", "React", 
+                "Angular", "Vue", "Node.js", ".NET", "Spring Boot", "Django", "Flask",
+                "AWS", "Azure", "Docker", "Kubernetes", "Git", "REST API", "GraphQL",
+                "MongoDB", "PostgreSQL", "MySQL", "Redis", "Entity Framework", "LINQ",
+                "HTML", "CSS", "Bootstrap", "Tailwind", "jQuery", "PHP", "Ruby", "Go",
+                "Rust", "Swift", "Kotlin", "Flutter", "React Native", "Xamarin"
+            };
+
+            while (await reader.ReadAsync())
+            {
+                var requirements = reader.GetString(0);
+                if (string.IsNullOrEmpty(requirements)) continue;
+
+                foreach (var skill in commonSkills)
+                {
+                    if (requirements.Contains(skill, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (skills.ContainsKey(skill))
+                            skills[skill]++;
+                        else
+                            skills[skill] = 1;
+                    }
+                }
+            }
+
+            return skills.OrderByDescending(x => x.Value).ToDictionary(x => x.Key, x => x.Value);
         }
 
         public async Task<PlatformStats> GetPlatformStatsAsync()
@@ -172,25 +240,6 @@ namespace PATHFINDER_BACKEND.Repositories
                 ? (stats.AcceptedApplications / (double)stats.TotalApplications) * 100 : 0;
 
             return stats;
-        }
-
-        // FIXED: Removed async keyword - returns Task directly
-        public Task<Dictionary<string, int>> GetJobSkillDistributionAsync()
-        {
-            var skills = new Dictionary<string, int>
-            {
-                { "C#", 45 },
-                { "JavaScript", 38 },
-                { "Python", 32 },
-                { "SQL", 28 },
-                { "Java", 25 },
-                { "React", 22 },
-                { "Azure", 18 },
-                { "Docker", 15 },
-                { "TypeScript", 14 },
-                { "AWS", 12 }
-            };
-            return Task.FromResult(skills);
         }
 
         // ========== WRITE METHODS (Storage) ==========
@@ -257,6 +306,8 @@ namespace PATHFINDER_BACKEND.Repositories
             await cmd.ExecuteNonQueryAsync();
         }
 
+        // ========== DTO Classes ==========
+
         public class PlatformStats
         {
             public int TotalStudents { get; set; }
@@ -269,5 +320,27 @@ namespace PATHFINDER_BACKEND.Repositories
             public double AverageApplicantsPerJob { get; set; }
             public double ApplicationSuccessRate { get; set; }
         }
+    }
+
+    public class JobInfo
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Requirements { get; set; } = "";
+        public string CompanyName { get; set; } = "";
+        public int CompanyId { get; set; }
+    }
+
+    public class ApplicantInfo
+    {
+        public int ApplicationId { get; set; }
+        public int StudentId { get; set; }
+        public string StudentName { get; set; } = "";
+        public string StudentEmail { get; set; } = "";
+        public string? CvUrl { get; set; }
+        public string? Skills { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime AppliedDate { get; set; }
     }
 }
