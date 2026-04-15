@@ -35,6 +35,17 @@ builder.Services.AddScoped<BlobService>();
 builder.Services.AddScoped<LocalFileStorageService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 
+//AI Services
+builder.Services.AddMemoryCache(); 
+builder.Services.AddScoped<GeminiAIService>();
+builder.Services.AddScoped<AtsScoringService>();
+builder.Services.AddScoped<JobMatchingService>();
+builder.Services.AddScoped<CachingService>();
+builder.Services.AddScoped<AiAnalyticsRepository>();
+
+// Add HTTP client for Gemini
+builder.Services.AddHttpClient();
+
 // Token revocation is stored in-memory (sufficient for single-instance demo).
 builder.Services.AddSingleton<TokenRevocationService>();
 builder.Services.AddApplicationInsightsTelemetry();
