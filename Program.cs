@@ -40,6 +40,8 @@ builder.Services.AddScoped<BlobService>();
 builder.Services.AddScoped<LocalFileStorageService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<CvTextExtractorService>();
+builder.Services.AddScoped<PasswordResetRepository>();
+builder.Services.AddScoped<PasswordResetService>();
 
 //AI Services
 builder.Services.AddMemoryCache(); 
@@ -126,6 +128,7 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
 
 // Create upload directories for local storage
 var webRootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
