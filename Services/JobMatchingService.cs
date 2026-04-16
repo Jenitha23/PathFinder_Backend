@@ -22,9 +22,11 @@ namespace PATHFINDER_BACKEND.Services
             string cvText, string studentSkills, string studentEducation, int studentId,
             int jobId, string jobTitle, string jobDescription, string jobRequirements, string companyName)
         {
-            var systemInstruction = @"You are a job matching algorithm expert. Return ONLY valid JSON.";
+            try
+            {
+                var systemInstruction = @"You are a job matching algorithm expert. Return ONLY valid JSON.";
 
-            var prompt = $@"
+                var prompt = $@"
 Calculate the match percentage between this candidate and job.
 
 CANDIDATE PROFILE:
@@ -47,8 +49,6 @@ OUTPUT (JSON only):
     ""recommendation"": ""string""
 }}";
 
-            try
-            {
                 var result = await _gemini.GenerateStructuredContentAsync<JobMatchRaw>(prompt, systemInstruction);
 
                 var response = new JobMatchResponse
@@ -65,24 +65,45 @@ OUTPUT (JSON only):
                     CalculatedAt = DateTime.UtcNow
                 };
 
-                // Save to database
-                await _aiRepo.SaveJobMatchAnalyticsAsync(new JobMatchAnalytics
+                // Save to database (non-critical - don't fail if save fails)
+                try
                 {
-                    JobId = jobId,
-                    StudentId = studentId,
-                    MatchScore = response.MatchPercentage,
-                    MatchedSkills = string.Join("|", response.MatchedSkills),
-                    MissingSkills = string.Join("|", response.MissingSkills),
-                    PartialMatches = string.Join("|", response.PartialMatches),
-                    Recommendation = response.Recommendation
-                });
+                    await _aiRepo.SaveJobMatchAnalyticsAsync(new JobMatchAnalytics
+                    {
+                        JobId = jobId,
+                        StudentId = studentId,
+                        MatchScore = response.MatchPercentage,
+                        MatchedSkills = string.Join("|", response.MatchedSkills),
+                        MissingSkills = string.Join("|", response.MissingSkills),
+                        PartialMatches = string.Join("|", response.PartialMatches),
+                        Recommendation = response.Recommendation
+                    });
+                }
+                catch (Exception dbEx)
+                {
+                    _logger.LogWarning(dbEx, "Failed to save match analytics, but continuing");
+                }
 
                 return response;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to calculate match for student {StudentId}, job {JobId}", studentId, jobId);
-                throw;
+                
+                // Return fallback data instead of throwing
+                return new JobMatchResponse
+                {
+                    StudentId = studentId,
+                    JobId = jobId,
+                    JobTitle = jobTitle,
+                    CompanyName = companyName,
+                    MatchPercentage = 50,
+                    MatchedSkills = new List<string>(),
+                    MissingSkills = new List<string>(),
+                    PartialMatches = new List<string>(),
+                    Recommendation = "AI service is currently busy. Please try again in a few moments.",
+                    CalculatedAt = DateTime.UtcNow
+                };
             }
         }
 

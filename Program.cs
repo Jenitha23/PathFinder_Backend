@@ -8,6 +8,11 @@ using PATHFINDER_BACKEND.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 // Add MVC controllers + Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -144,7 +149,6 @@ if (!Directory.Exists(companyLogoPath))
 // Enable static files to serve uploaded images
 app.UseStaticFiles();
 
-
 // Swagger UI in Development and Production environments
 if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
@@ -169,13 +173,14 @@ app.MapGet("/", () => "PathFinder API is running!");
 // Health endpoint for monitoring/testing
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now }));
 
-// Seed default admin if enabled (idempotent)
+// Seed default admin if enabled (idempotent) and create AI tables
 // Credentials should be provided via environment variables to avoid hardcoding secrets.
 using (var scope = app.Services.CreateScope())
 {
     var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
     var adminRepo = scope.ServiceProvider.GetRequiredService<AdminRepository>();
     var pwd = scope.ServiceProvider.GetRequiredService<PasswordService>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     var seedEnabled = config.GetValue("AdminSeed:Enabled", true);
     if (seedEnabled)
@@ -195,7 +200,20 @@ using (var scope = app.Services.CreateScope())
         {
             // Hash password before inserting (never store plain password)
             await adminRepo.EnsureSeedAdminAsync(seedFullName, seedEmail, pwd.Hash(seedPassword));
+            app.Logger.LogInformation("Admin seeded successfully");
         }
+    }
+
+    // Create AI analytics tables if they don't exist
+    try
+    {
+        var aiRepo = scope.ServiceProvider.GetRequiredService<AiAnalyticsRepository>();
+        await aiRepo.EnsureAiTablesExistAsync();
+        app.Logger.LogInformation("AI analytics tables verified/created successfully");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Failed to ensure AI analytics tables exist. AI features may not work properly.");
     }
 }
 
