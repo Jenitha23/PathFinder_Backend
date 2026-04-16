@@ -14,6 +14,116 @@ namespace PATHFINDER_BACKEND.Repositories
             _db = db;
         }
 
+        // ========== NEW METHOD - ADD THIS ==========
+        /// <summary>
+        /// Ensures all AI analytics tables exist (creates them if missing)
+        /// Call this during app startup
+        /// </summary>
+        public async Task EnsureAiTablesExistAsync()
+        {
+            var sql = @"
+            -- Table 1: CV Analysis Results
+            IF OBJECT_ID('dbo.cv_analysis_results', 'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.cv_analysis_results (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    student_id INT NOT NULL,
+                    job_id INT NULL,
+                    ats_score INT NOT NULL,
+                    match_percentage INT NULL,
+                    strengths NVARCHAR(MAX) NULL,
+                    suggestions NVARCHAR(MAX) NULL,
+                    missing_keywords NVARCHAR(MAX) NULL,
+                    present_keywords NVARCHAR(MAX) NULL,
+                    formatting_feedback NVARCHAR(MAX) NULL,
+                    recommendation NVARCHAR(200) NULL,
+                    analysis_type NVARCHAR(50) NOT NULL DEFAULT 'Standalone',
+                    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                    
+                    CONSTRAINT FK_cv_analysis_student 
+                        FOREIGN KEY (student_id) REFERENCES dbo.students(id) ON DELETE CASCADE,
+                    CONSTRAINT FK_cv_analysis_job 
+                        FOREIGN KEY (job_id) REFERENCES dbo.jobs(id) ON DELETE SET NULL
+                );
+                
+                CREATE INDEX IX_cv_analysis_student_id ON dbo.cv_analysis_results(student_id);
+                CREATE INDEX IX_cv_analysis_job_id ON dbo.cv_analysis_results(job_id);
+                CREATE INDEX IX_cv_analysis_created_at ON dbo.cv_analysis_results(created_at);
+            END
+
+            -- Table 2: Job Match Analytics
+            IF OBJECT_ID('dbo.job_match_analytics', 'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.job_match_analytics (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    job_id INT NOT NULL,
+                    student_id INT NOT NULL,
+                    match_score INT NOT NULL,
+                    matched_skills NVARCHAR(MAX) NULL,
+                    missing_skills NVARCHAR(MAX) NULL,
+                    partial_matches NVARCHAR(MAX) NULL,
+                    recommendation NVARCHAR(200) NULL,
+                    calculated_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                    
+                    CONSTRAINT FK_match_job 
+                        FOREIGN KEY (job_id) REFERENCES dbo.jobs(id) ON DELETE CASCADE,
+                    CONSTRAINT FK_match_student 
+                        FOREIGN KEY (student_id) REFERENCES dbo.students(id) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IX_job_match_job_id ON dbo.job_match_analytics(job_id);
+                CREATE INDEX IX_job_match_student_id ON dbo.job_match_analytics(student_id);
+                CREATE INDEX IX_job_match_calculated_at ON dbo.job_match_analytics(calculated_at);
+            END
+
+            -- Table 3: Applicant Screening
+            IF OBJECT_ID('dbo.applicant_screening', 'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.applicant_screening (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    application_id INT NOT NULL,
+                    screening_score INT NOT NULL,
+                    screening_recommendation NVARCHAR(100) NULL,
+                    ai_analysis_json NVARCHAR(MAX) NULL,
+                    screened_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                    
+                    CONSTRAINT FK_screening_application 
+                        FOREIGN KEY (application_id) REFERENCES dbo.applications(id) ON DELETE CASCADE
+                );
+                
+                CREATE INDEX IX_applicant_screening_application_id ON dbo.applicant_screening(application_id);
+                CREATE INDEX IX_applicant_screening_score ON dbo.applicant_screening(screening_score);
+            END
+
+            -- Table 4: Analytics History
+            IF OBJECT_ID('dbo.analytics_history', 'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.analytics_history (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    snapshot_date DATE NOT NULL,
+                    total_students INT NOT NULL DEFAULT 0,
+                    active_companies INT NOT NULL DEFAULT 0,
+                    active_jobs INT NOT NULL DEFAULT 0,
+                    total_applications INT NOT NULL DEFAULT 0,
+                    avg_ats_score DECIMAL(5,2) NULL,
+                    avg_match_percentage DECIMAL(5,2) NULL,
+                    application_success_rate DECIMAL(5,2) NULL,
+                    top_skills NVARCHAR(MAX) NULL,
+                    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                    
+                    CONSTRAINT UQ_analytics_snapshot_date UNIQUE (snapshot_date)
+                );
+                
+                CREATE INDEX IX_analytics_history_snapshot_date ON dbo.analytics_history(snapshot_date);
+            END
+            ";
+
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(sql, conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         // ========== READ METHODS ==========
 
         public async Task<(string? CvUrl, string? Skills, string? TechnicalSkills, string? Education, string? University, string? Degree)> 
@@ -259,6 +369,7 @@ namespace PATHFINDER_BACKEND.Repositories
             await cmd.ExecuteNonQueryAsync();
         }
 
+        // ========== UPDATED METHOD - Add retry logic ==========
         public async Task SaveJobMatchAnalyticsAsync(JobMatchAnalytics match)
         {
             const string sql = @"
@@ -266,17 +377,38 @@ namespace PATHFINDER_BACKEND.Repositories
                 (job_id, student_id, match_score, matched_skills, missing_skills, partial_matches, recommendation)
                 VALUES (@jobId, @studentId, @matchScore, @matchedSkills, @missingSkills, @partialMatches, @recommendation)";
 
-            using var conn = _db.CreateConnection();
-            await conn.OpenAsync();
-            using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@jobId", match.JobId);
-            cmd.Parameters.AddWithValue("@studentId", match.StudentId);
-            cmd.Parameters.AddWithValue("@matchScore", match.MatchScore);
-            cmd.Parameters.AddWithValue("@matchedSkills", (object?)match.MatchedSkills ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@missingSkills", (object?)match.MissingSkills ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@partialMatches", (object?)match.PartialMatches ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@recommendation", (object?)match.Recommendation ?? DBNull.Value);
-            await cmd.ExecuteNonQueryAsync();
+            try
+            {
+                using var conn = _db.CreateConnection();
+                await conn.OpenAsync();
+                using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@jobId", match.JobId);
+                cmd.Parameters.AddWithValue("@studentId", match.StudentId);
+                cmd.Parameters.AddWithValue("@matchScore", match.MatchScore);
+                cmd.Parameters.AddWithValue("@matchedSkills", (object?)match.MatchedSkills ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@missingSkills", (object?)match.MissingSkills ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@partialMatches", (object?)match.PartialMatches ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@recommendation", (object?)match.Recommendation ?? DBNull.Value);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex) when (ex.Number == 208) // Table missing error
+            {
+                // Try to create tables and retry once
+                await EnsureAiTablesExistAsync();
+                
+                // Retry the insert
+                using var conn = _db.CreateConnection();
+                await conn.OpenAsync();
+                using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@jobId", match.JobId);
+                cmd.Parameters.AddWithValue("@studentId", match.StudentId);
+                cmd.Parameters.AddWithValue("@matchScore", match.MatchScore);
+                cmd.Parameters.AddWithValue("@matchedSkills", (object?)match.MatchedSkills ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@missingSkills", (object?)match.MissingSkills ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@partialMatches", (object?)match.PartialMatches ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@recommendation", (object?)match.Recommendation ?? DBNull.Value);
+                await cmd.ExecuteNonQueryAsync();
+            }
         }
 
         public async Task SaveApplicantScreeningAsync(int applicationId, int score, string recommendation, string aiAnalysisJson)
