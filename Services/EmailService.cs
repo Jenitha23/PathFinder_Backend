@@ -30,8 +30,8 @@ namespace PATHFINDER_BACKEND.Services
         {
             try
             {
-                var frontendUrl = _configuration["App:FrontendUrl"] ?? "http://localhost:3000";
-                var resetLink = $"{frontendUrl}/reset-password?token={resetToken}&type={userType.ToLower()}";
+                var frontendUrl = _configuration["App:FrontendUrl"] ?? "https://pathfinder-frontend-navy.vercel.app";
+                var resetLink = $"{frontendUrl}/auth/reset-password?token={resetToken}&type={userType.ToLower()}";
                 
                 var subject = "Password Reset Request - PathFinder";
                 var body = $@"
