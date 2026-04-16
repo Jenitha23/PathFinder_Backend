@@ -34,6 +34,7 @@ builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<BlobService>();
 builder.Services.AddScoped<LocalFileStorageService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<CvTextExtractorService>();
 
 //AI Services
 builder.Services.AddMemoryCache(); 
@@ -42,6 +43,7 @@ builder.Services.AddScoped<AtsScoringService>();
 builder.Services.AddScoped<JobMatchingService>();
 builder.Services.AddScoped<CachingService>();
 builder.Services.AddScoped<AiAnalyticsRepository>();
+builder.Services.AddScoped<AiInsightsGeneratorService>();
 
 // Add HTTP client for Gemini
 builder.Services.AddHttpClient();

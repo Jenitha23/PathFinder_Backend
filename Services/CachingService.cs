@@ -3,7 +3,16 @@ using Microsoft.Extensions.Logging;
 
 namespace PATHFINDER_BACKEND.Services
 {
-    public class CachingService
+    public interface ICachingService
+    {
+        Task<T?> GetAsync<T>(string key);
+        Task SetAsync<T>(string key, T value, TimeSpan? expiry = null);
+        Task RemoveAsync(string key);
+        bool TryGet<T>(string key, out T? value);
+        void Set<T>(string key, T value, TimeSpan? expiry = null);
+    }
+
+    public class CachingService : ICachingService
     {
         private readonly IMemoryCache _cache;
         private readonly ILogger<CachingService> _logger;
@@ -14,26 +23,56 @@ namespace PATHFINDER_BACKEND.Services
             _logger = logger;
         }
 
-        public async Task<T> GetOrCreateAsync<T>(string key, Func<Task<T>> factory, TimeSpan? expiry = null)
+        public async Task<T?> GetAsync<T>(string key)
         {
-            if (_cache.TryGetValue(key, out T? cachedValue) && cachedValue != null)
+            return await Task.Run(() => Get<T>(key));
+        }
+
+        public T? Get<T>(string key)
+        {
+            if (_cache.TryGetValue(key, out T? cachedValue))
             {
                 _logger.LogDebug("Cache hit for key: {Key}", key);
                 return cachedValue;
             }
+            
+            _logger.LogDebug("Cache miss for key: {Key}", key);
+            return default;
+        }
 
-            _logger.LogDebug("Cache miss for key: {Key}, computing value", key);
-            var value = await factory();
+        public bool TryGet<T>(string key, out T? value)
+        {
+            var result = _cache.TryGetValue(key, out value);
+            if (result)
+                _logger.LogDebug("Cache hit for key: {Key}", key);
+            else
+                _logger.LogDebug("Cache miss for key: {Key}", key);
+            return result;
+        }
 
+        public async Task SetAsync<T>(string key, T value, TimeSpan? expiry = null)
+        {
+            await Task.Run(() => Set(key, value, expiry));
+        }
+
+        public void Set<T>(string key, T value, TimeSpan? expiry = null)
+        {
             var options = new MemoryCacheEntryOptions()
                 .SetSlidingExpiration(expiry ?? TimeSpan.FromHours(24))
                 .SetPriority(CacheItemPriority.Normal);
-
+            
             _cache.Set(key, value, options);
-            return value;
+            _logger.LogDebug("Cached value for key: {Key}", key);
+        }
+
+        public async Task RemoveAsync(string key)
+        {
+            await Task.Run(() => _cache.Remove(key));
+            _logger.LogDebug("Removed cache for key: {Key}", key);
         }
 
         public static string MatchCacheKey(int studentId, int jobId) => $"match_{studentId}_{jobId}";
-        public static string AtsCacheKey(int studentId) => $"ats_{studentId}";
+        public static string AtsCacheKey(int studentId, int? jobId = null) => 
+            jobId.HasValue ? $"ats_{studentId}_job_{jobId}" : $"ats_{studentId}_standalone";
     }
 }
