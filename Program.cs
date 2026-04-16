@@ -43,6 +43,7 @@ builder.Services.AddScoped<AtsScoringService>();
 builder.Services.AddScoped<JobMatchingService>();
 builder.Services.AddScoped<CachingService>();
 builder.Services.AddScoped<AiAnalyticsRepository>();
+builder.Services.AddScoped<AiInsightsGeneratorService>();
 
 // Add HTTP client for Gemini
 builder.Services.AddHttpClient();

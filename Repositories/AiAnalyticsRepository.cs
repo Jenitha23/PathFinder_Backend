@@ -143,9 +143,6 @@ namespace PATHFINDER_BACKEND.Repositories
             return applicants;
         }
 
-        /// <summary>
-        /// Get REAL skill distribution from job requirements (not hardcoded)
-        /// </summary>
         public async Task<Dictionary<string, int>> GetJobSkillDistributionFromDatabaseAsync()
         {
             var skills = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -198,35 +195,27 @@ namespace PATHFINDER_BACKEND.Repositories
             using var conn = _db.CreateConnection();
             await conn.OpenAsync();
 
-            // Total Students
             using (var cmd = new SqlCommand("SELECT COUNT(1) FROM dbo.students WHERE (is_deleted IS NULL OR is_deleted = 0)", conn))
                 stats.TotalStudents = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-            // New Students (Last 30 Days)
             using (var cmd = new SqlCommand("SELECT COUNT(1) FROM dbo.students WHERE (is_deleted IS NULL OR is_deleted = 0) AND created_at >= DATEADD(DAY, -30, SYSUTCDATETIME())", conn))
                 stats.NewStudentsLast30Days = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-            // Active Companies
             using (var cmd = new SqlCommand("SELECT COUNT(1) FROM dbo.companies WHERE status = 'APPROVED'", conn))
                 stats.ActiveCompanies = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-            // Active Jobs
             using (var cmd = new SqlCommand("SELECT COUNT(1) FROM dbo.jobs WHERE (is_deleted IS NULL OR is_deleted = 0) AND deadline >= CAST(SYSUTCDATETIME() AS DATE)", conn))
                 stats.ActiveJobs = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-            // Total Applications
             using (var cmd = new SqlCommand("SELECT COUNT(1) FROM dbo.applications", conn))
                 stats.TotalApplications = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-            // Accepted Applications
             using (var cmd = new SqlCommand("SELECT COUNT(1) FROM dbo.applications WHERE status = 'Accepted'", conn))
                 stats.AcceptedApplications = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-            // Stuck Pending Companies
             using (var cmd = new SqlCommand("SELECT COUNT(1) FROM dbo.companies WHERE status = 'PENDING_APPROVAL' AND created_at <= DATEADD(DAY, -7, SYSUTCDATETIME())", conn))
                 stats.StuckPendingCompanies = Convert.ToInt32(await cmd.ExecuteScalarAsync());
 
-            // Average Applicants Per Job
             using (var cmd = new SqlCommand(@"
                 SELECT ISNULL(AVG(ApplicationCount), 0) FROM (
                     SELECT COUNT(1) AS ApplicationCount FROM dbo.applications GROUP BY job_id
@@ -242,7 +231,7 @@ namespace PATHFINDER_BACKEND.Repositories
             return stats;
         }
 
-        // ========== WRITE METHODS (Storage) ==========
+        // ========== WRITE METHODS ==========
 
         public async Task SaveCvAnalysisResultAsync(CvAnalysisResult result)
         {
@@ -306,7 +295,188 @@ namespace PATHFINDER_BACKEND.Repositories
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // ========== DTO Classes ==========
+        // ========== AI ANALYTICS METHODS ==========
+
+        public async Task<PlatformAnalyticsData> GetPlatformAnalyticsForAIAsync()
+        {
+            var data = new PlatformAnalyticsData();
+            
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+            
+            // Student engagement metrics - FIXED: CAST to FLOAT
+            const string engagementSql = @"
+                SELECT 
+                    COUNT(DISTINCT s.id) as TotalStudents,
+                    COUNT(DISTINCT CASE WHEN a.id IS NOT NULL THEN s.id END) as StudentsWithApplications,
+                    CAST(ISNULL(COUNT(DISTINCT CASE WHEN a.id IS NOT NULL THEN s.id END) * 100.0 / NULLIF(COUNT(DISTINCT s.id), 0), 0) AS FLOAT) as EngagementRate
+                FROM students s
+                LEFT JOIN applications a ON a.student_id = s.id
+                WHERE (s.is_deleted IS NULL OR s.is_deleted = 0)";
+            
+            using (var cmd = new SqlCommand(engagementSql, conn))
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                if (await reader.ReadAsync())
+                {
+                    data.TotalStudents = reader.GetInt32(0);
+                    data.StudentsWithApplications = reader.GetInt32(1);
+                    data.StudentEngagementRate = reader.GetDouble(2);
+                }
+            }
+            
+            // Student trends
+            const string trendsSql = @"
+                SELECT 
+                    YEAR(created_at) as Year,
+                    MONTH(created_at) as Month,
+                    COUNT(*) as NewStudents
+                FROM students
+                WHERE created_at >= DATEADD(MONTH, -6, GETDATE())
+                    AND (is_deleted IS NULL OR is_deleted = 0)
+                GROUP BY YEAR(created_at), MONTH(created_at)
+                ORDER BY Year DESC, Month DESC";
+            
+            using (var cmd = new SqlCommand(trendsSql, conn))
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    data.StudentTrends.Add(new MonthlyTrend
+                    {
+                        Year = reader.GetInt32(0),
+                        Month = reader.GetInt32(1),
+                        Count = reader.GetInt32(2)
+                    });
+                }
+            }
+            
+            // Job trends by category
+            const string jobTrendsSql = @"
+                SELECT 
+                    category,
+                    COUNT(*) as TotalJobs,
+                    COUNT(CASE WHEN created_at >= DATEADD(MONTH, -3, GETDATE()) THEN 1 END) as NewJobs
+                FROM jobs
+                WHERE (is_deleted IS NULL OR is_deleted = 0)
+                    AND category IS NOT NULL
+                GROUP BY category
+                ORDER BY TotalJobs DESC";
+            
+            using (var cmd = new SqlCommand(jobTrendsSql, conn))
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    data.JobTrends.Add(new CategoryTrend
+                    {
+                        Category = reader.GetString(0),
+                        TotalJobs = reader.GetInt32(1),
+                        NewJobsLast3Months = reader.GetInt32(2)
+                    });
+                }
+            }
+            
+            // Application status distribution - FIXED: CAST to FLOAT
+            const string appStatusSql = @"
+                SELECT 
+                    status,
+                    COUNT(*) as Count,
+                    CAST(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() AS FLOAT) as Percentage
+                FROM applications
+                GROUP BY status";
+            
+            using (var cmd = new SqlCommand(appStatusSql, conn))
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    data.ApplicationStatusDistribution.Add(new StatusDistribution
+                    {
+                        Status = reader.GetString(0),
+                        Count = reader.GetInt32(1),
+                        Percentage = reader.GetDouble(2)
+                    });
+                }
+            }
+            
+            // Top companies
+            const string topCompaniesSql = @"
+                SELECT TOP 5
+                    c.company_name,
+                    COUNT(j.id) as JobCount,
+                    ISNULL(COUNT(a.id), 0) as TotalApplications
+                FROM companies c
+                LEFT JOIN jobs j ON j.company_id = c.id AND (j.is_deleted IS NULL OR j.is_deleted = 0)
+                LEFT JOIN applications a ON a.job_id = j.id
+                WHERE c.status = 'APPROVED'
+                GROUP BY c.company_name
+                ORDER BY JobCount DESC";
+            
+            using (var cmd = new SqlCommand(topCompaniesSql, conn))
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    data.TopCompanies.Add(new CompanyActivity
+                    {
+                        CompanyName = reader.GetString(0),
+                        JobCount = reader.GetInt32(1),
+                        TotalApplications = reader.GetInt32(2)
+                    });
+                }
+            }
+            
+            data.TopSkills = await GetJobSkillDistributionFromDatabaseAsync();
+            data.StudentSkills = await GetStudentSkillsDistributionAsync();
+            
+            return data;
+        }
+
+        public async Task<Dictionary<string, int>> GetStudentSkillsDistributionAsync()
+        {
+            var skills = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            
+            const string sql = @"
+                SELECT skills, technical_skills
+                FROM student_profiles
+                WHERE skills IS NOT NULL OR technical_skills IS NOT NULL";
+            
+            using var conn = _db.CreateConnection();
+            await conn.OpenAsync();
+            using var cmd = new SqlCommand(sql, conn);
+            using var reader = await cmd.ExecuteReaderAsync();
+            
+            var commonSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "C#", "JavaScript", "Python", "Java", "SQL", "TypeScript", "React", 
+                "Angular", "Vue", "Node.js", ".NET", "Spring Boot", "Django", "Flask",
+                "AWS", "Azure", "Docker", "Kubernetes", "Git", "REST API", "GraphQL",
+                "MongoDB", "PostgreSQL", "MySQL", "Redis", "Go", "Rust", "Swift"
+            };
+            
+            while (await reader.ReadAsync())
+            {
+                var allSkills = "";
+                if (!reader.IsDBNull(0)) allSkills += reader.GetString(0);
+                if (!reader.IsDBNull(1)) allSkills += " " + reader.GetString(1);
+                
+                foreach (var skill in commonSkills)
+                {
+                    if (allSkills.Contains(skill, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (skills.ContainsKey(skill))
+                            skills[skill]++;
+                        else
+                            skills[skill] = 1;
+                    }
+                }
+            }
+            
+            return skills;
+        }
+
+        // ========== DTO CLASSES ==========
 
         public class PlatformStats
         {
@@ -321,6 +491,8 @@ namespace PATHFINDER_BACKEND.Repositories
             public double ApplicationSuccessRate { get; set; }
         }
     }
+
+    // ========== EXTERNAL DTO CLASSES ==========
 
     public class JobInfo
     {
@@ -342,5 +514,46 @@ namespace PATHFINDER_BACKEND.Repositories
         public string? Skills { get; set; }
         public string Status { get; set; } = "";
         public DateTime AppliedDate { get; set; }
+    }
+
+    public class PlatformAnalyticsData
+    {
+        public int TotalStudents { get; set; }
+        public int StudentsWithApplications { get; set; }
+        public double StudentEngagementRate { get; set; }
+        public List<MonthlyTrend> StudentTrends { get; set; } = new();
+        public List<CategoryTrend> JobTrends { get; set; } = new();
+        public List<StatusDistribution> ApplicationStatusDistribution { get; set; } = new();
+        public List<CompanyActivity> TopCompanies { get; set; } = new();
+        public Dictionary<string, int> TopSkills { get; set; } = new();
+        public Dictionary<string, int> StudentSkills { get; set; } = new();
+    }
+
+    public class MonthlyTrend
+    {
+        public int Year { get; set; }
+        public int Month { get; set; }
+        public int Count { get; set; }
+    }
+
+    public class CategoryTrend
+    {
+        public string Category { get; set; } = "";
+        public int TotalJobs { get; set; }
+        public int NewJobsLast3Months { get; set; }
+    }
+
+    public class StatusDistribution
+    {
+        public string Status { get; set; } = "";
+        public int Count { get; set; }
+        public double Percentage { get; set; }
+    }
+
+    public class CompanyActivity
+    {
+        public string CompanyName { get; set; } = "";
+        public int JobCount { get; set; }
+        public int TotalApplications { get; set; }
     }
 }

@@ -10,6 +10,7 @@ namespace PATHFINDER_BACKEND.DTOs
         public List<SkillTrend> TopInDemandSkills { get; set; } = new();
         public List<IndustryTrend> IndustryTrends { get; set; } = new();
         public List<Prediction> Predictions { get; set; } = new();
+        public string AiGeneratedSummary { get; set; } = "";
         public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
     }
 
@@ -29,6 +30,8 @@ namespace PATHFINDER_BACKEND.DTOs
         public double ApplicationSuccessRate { get; set; }
         public int CompaniesNeedingAttention { get; set; }
         public List<string> Recommendations { get; set; } = new();
+        public int HealthScore { get; set; }
+        public string AlertLevel { get; set; } = "Good";
     }
 
     public class SkillTrend
@@ -43,9 +46,8 @@ namespace PATHFINDER_BACKEND.DTOs
     public class IndustryTrend
     {
         public string Industry { get; set; } = "";
-        public int JobCount { get; set; }
-        public int ApplicationCount { get; set; }
-        public double GrowthRate { get; set; }
+        public string Trend { get; set; } = "";
+        public string Insight { get; set; } = "";
     }
 
     public class Prediction

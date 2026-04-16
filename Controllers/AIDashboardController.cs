@@ -17,6 +17,7 @@ namespace PATHFINDER_BACKEND.Controllers
         private readonly ILogger<AIDashboardController> _logger;
         private readonly IWebHostEnvironment _env;
         private readonly CvTextExtractorService _cvExtractor;
+        private readonly AiInsightsGeneratorService _aiInsightsGenerator;
 
         public AIDashboardController(
             AiAnalyticsRepository aiRepo,
@@ -24,7 +25,8 @@ namespace PATHFINDER_BACKEND.Controllers
             JobMatchingService matchingService,
             ILogger<AIDashboardController> logger,
             IWebHostEnvironment env,
-            CvTextExtractorService cvExtractor)
+            CvTextExtractorService cvExtractor,
+            AiInsightsGeneratorService aiInsightsGenerator)
         {
             _aiRepo = aiRepo;
             _atsService = atsService;
@@ -32,6 +34,7 @@ namespace PATHFINDER_BACKEND.Controllers
             _logger = logger;
             _env = env;
             _cvExtractor = cvExtractor;
+            _aiInsightsGenerator = aiInsightsGenerator;
         }
 
         [HttpPost("student/ats/analyze")]
@@ -280,67 +283,153 @@ namespace PATHFINDER_BACKEND.Controllers
 
         [HttpGet("admin/insights")]
         [Authorize(Roles = "ADMIN")]
-        public async Task<IActionResult> GetAdminInsights()
+        public async Task<IActionResult> GetAdminInsights([FromQuery] bool useAI = true)
         {
             try
             {
-                var stats = await _aiRepo.GetPlatformStatsAsync();
-                var skillDistribution = await _aiRepo.GetJobSkillDistributionFromDatabaseAsync();
-
-                var topSkills = skillDistribution.Take(10)
-                    .Select(kv => new SkillTrend 
-                    { 
-                        SkillName = kv.Key, 
-                        JobPostingsCount = kv.Value,
-                        StudentsWithSkill = 0,
-                        GapCount = 0,
-                        GrowthRate = 0
-                    })
-                    .ToList();
-
-                var insights = new AdminAiInsightsResponse
+                var adminId = User.FindFirst("userId")?.Value;
+                if (string.IsNullOrEmpty(adminId))
                 {
-                    TalentDemand = new TalentDemandInsights
-                    {
-                        MostSoughtAfterRole = topSkills.FirstOrDefault()?.SkillName ?? "Unknown",
-                        FastestGrowingCategory = "Software Development",
-                        AverageApplicantsPerJob = stats.AverageApplicantsPerJob,
-                        TotalActiveJobs = stats.ActiveJobs,
-                        TotalActiveStudents = stats.TotalStudents,
-                        StudentToJobRatio = stats.ActiveJobs > 0 ? (double)stats.TotalStudents / stats.ActiveJobs : 0
-                    },
-                    PlatformHealth = new PlatformHealthInsights
-                    {
-                        MonthOverMonthGrowth = stats.NewStudentsLast30Days > 0 ?
-                            (stats.NewStudentsLast30Days / (double)Math.Max(1, stats.TotalStudents - stats.NewStudentsLast30Days)) * 100 : 0,
-                        ApplicationSuccessRate = stats.ApplicationSuccessRate,
-                        CompaniesNeedingAttention = stats.StuckPendingCompanies,
-                        Recommendations = new List<string>
-                        {
-                            stats.StuckPendingCompanies > 0 ? $"Review {stats.StuckPendingCompanies} pending companies." : "All companies processed.",
-                            stats.AverageApplicantsPerJob < 5 ? "Consider promoting jobs." : "Good applicant volume."
-                        }
-                    },
-                    TopInDemandSkills = topSkills,
-                    IndustryTrends = new(),
-                    Predictions = new List<Prediction>
-                    {
-                        new Prediction
-                        {
-                            Metric = "Job Growth",
-                            PredictionText = $"Job postings expected to increase by {Math.Min(25, stats.NewStudentsLast30Days / 10)}% next month.",
-                            ConfidenceScore = 75,
-                            Timeframe = "30 days"
-                        }
-                    }
-                };
+                    return Unauthorized(new { message = "Invalid admin token" });
+                }
 
-                return Ok(insights);
+                AdminAiInsightsResponse insights;
+                
+                if (useAI)
+                {
+                    insights = await _aiInsightsGenerator.GenerateAiInsightsAsync();
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "AI-powered admin insights retrieved successfully",
+                        data = insights,
+                        metadata = new
+                        {
+                            generatedBy = "Gemini AI",
+                            generatedAt = DateTime.UtcNow,
+                            version = "2.0",
+                            aiEnabled = true
+                        }
+                    });
+                }
+                else
+                {
+                    insights = await GetBasicInsightsAsync();
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "Basic admin insights retrieved (AI disabled)",
+                        data = insights,
+                        metadata = new
+                        {
+                            generatedBy = "Basic Analytics",
+                            generatedAt = DateTime.UtcNow,
+                            version = "2.0",
+                            aiEnabled = false
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting admin insights");
-                return StatusCode(503, new { message = "Service temporarily unavailable" });
+                
+                var fallbackInsights = await GetBasicInsightsAsync();
+                return Ok(new
+                {
+                    success = false,
+                    message = "AI service temporarily unavailable. Showing basic insights.",
+                    data = fallbackInsights,
+                    error = _env.IsDevelopment() ? ex.Message : null,
+                    metadata = new
+                    {
+                        generatedBy = "Fallback Analytics",
+                        generatedAt = DateTime.UtcNow,
+                        version = "2.0",
+                        aiEnabled = false,
+                        errorOccurred = true
+                    }
+                });
+            }
+        }
+
+        [HttpGet("admin/insights/health")]
+        [Authorize(Roles = "ADMIN")]
+        public async Task<IActionResult> GetPlatformHealth()
+        {
+            try
+            {
+                var stats = await _aiRepo.GetPlatformStatsAsync();
+                var data = await _aiRepo.GetPlatformAnalyticsForAIAsync();
+                
+                return Ok(new
+                {
+                    success = true,
+                    message = "Platform health metrics retrieved",
+                    data = new
+                    {
+                        stats.TotalStudents,
+                        stats.ActiveJobs,
+                        stats.AverageApplicantsPerJob,
+                        stats.ApplicationSuccessRate,
+                        stats.NewStudentsLast30Days,
+                        stats.StuckPendingCompanies,
+                        StudentEngagementRate = data.StudentEngagementRate,
+                        HealthScore = CalculateHealthScore(stats, data),
+                        GeneratedAt = DateTime.UtcNow
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting platform health");
+                return StatusCode(500, new { success = false, message = "Failed to retrieve platform health" });
+            }
+        }
+
+        [HttpGet("admin/insights/skills-gap")]
+        [Authorize(Roles = "ADMIN")]
+        public async Task<IActionResult> GetSkillsGapAnalysis()
+        {
+            try
+            {
+                var jobSkills = await _aiRepo.GetJobSkillDistributionFromDatabaseAsync();
+                var studentSkills = await _aiRepo.GetStudentSkillsDistributionAsync();
+                
+                var skillGaps = new List<SkillTrend>();
+                
+                foreach (var jobSkill in jobSkills.Take(20))
+                {
+                    var studentsWithSkill = studentSkills.GetValueOrDefault(jobSkill.Key, 0);
+                    var gap = jobSkill.Value - studentsWithSkill;
+                    
+                    skillGaps.Add(new SkillTrend
+                    {
+                        SkillName = jobSkill.Key,
+                        JobPostingsCount = jobSkill.Value,
+                        StudentsWithSkill = studentsWithSkill,
+                        GapCount = gap > 0 ? gap : 0,
+                        GrowthRate = gap > 0 ? (gap * 100.0 / jobSkill.Value) : 0
+                    });
+                }
+                
+                return Ok(new
+                {
+                    success = true,
+                    message = "Skills gap analysis completed",
+                    data = new
+                    {
+                        totalSkillsAnalyzed = jobSkills.Count,
+                        criticalGaps = skillGaps.Where(s => s.GapCount > s.JobPostingsCount / 2).Count(),
+                        skillGaps = skillGaps.OrderByDescending(s => s.GapCount).ToList(),
+                        generatedAt = DateTime.UtcNow
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting skills gap analysis");
+                return StatusCode(500, new { success = false, message = "Failed to retrieve skills gap analysis" });
             }
         }
 
@@ -371,6 +460,122 @@ namespace PATHFINDER_BACKEND.Controllers
 
             var results = await Task.WhenAll(tasks);
             return results.ToList();
+        }
+
+        private async Task<AdminAiInsightsResponse> GetBasicInsightsAsync()
+        {
+            var stats = await _aiRepo.GetPlatformStatsAsync();
+            var skills = await _aiRepo.GetJobSkillDistributionFromDatabaseAsync();
+            var data = await _aiRepo.GetPlatformAnalyticsForAIAsync();
+            
+            return new AdminAiInsightsResponse
+            {
+                TalentDemand = new TalentDemandInsights
+                {
+                    MostSoughtAfterRole = skills.FirstOrDefault().Key ?? "Unknown",
+                    FastestGrowingCategory = data.JobTrends.OrderByDescending(j => j.NewJobsLast3Months).FirstOrDefault()?.Category ?? "Technology",
+                    AverageApplicantsPerJob = stats.AverageApplicantsPerJob,
+                    TotalActiveJobs = stats.ActiveJobs,
+                    TotalActiveStudents = stats.TotalStudents,
+                    StudentToJobRatio = stats.ActiveJobs > 0 ? (double)stats.TotalStudents / stats.ActiveJobs : 0
+                },
+                PlatformHealth = new PlatformHealthInsights
+                {
+                    MonthOverMonthGrowth = stats.NewStudentsLast30Days > 0 ?
+                        (stats.NewStudentsLast30Days / (double)Math.Max(1, stats.TotalStudents - stats.NewStudentsLast30Days)) * 100 : 0,
+                    ApplicationSuccessRate = stats.ApplicationSuccessRate,
+                    CompaniesNeedingAttention = stats.StuckPendingCompanies,
+                    Recommendations = new List<string>
+                    {
+                        stats.StuckPendingCompanies > 0 ? $"Review {stats.StuckPendingCompanies} pending companies" : "No pending companies",
+                        stats.AverageApplicantsPerJob < 5 ? "Consider promoting jobs to increase applications" : "Good application volume",
+                        data.StudentEngagementRate < 50 ? "Improve student engagement with personalized job alerts" : "Student engagement is healthy"
+                    },
+                    HealthScore = CalculateHealthScore(stats, data),
+                    AlertLevel = stats.StuckPendingCompanies > 5 ? "Warning" : stats.StuckPendingCompanies > 0 ? "Attention" : "Good"
+                },
+                TopInDemandSkills = skills.Take(10).Select(s => new SkillTrend
+                {
+                    SkillName = s.Key,
+                    JobPostingsCount = s.Value,
+                    StudentsWithSkill = 0,
+                    GapCount = s.Value,
+                    GrowthRate = 10
+                }).ToList(),
+                IndustryTrends = data.JobTrends.Take(5).Select(j => new IndustryTrend
+                {
+                    Industry = j.Category,
+                    Trend = j.NewJobsLast3Months > j.TotalJobs / 4 ? "Growing" : "Stable",
+                    Insight = $"{j.Category} has {j.TotalJobs} positions, with {j.NewJobsLast3Months} new in last 3 months"
+                }).ToList(),
+                Predictions = new List<Prediction>
+                {
+                    new Prediction
+                    {
+                        Metric = "Job Growth",
+                        PredictionText = $"Expected to grow by {Math.Min(20, stats.NewStudentsLast30Days / 5)}% in next quarter based on current trends",
+                        ConfidenceScore = 70,
+                        Timeframe = "90 days"
+                    },
+                    new Prediction
+                    {
+                        Metric = "Student Enrollment",
+                        PredictionText = $"Expected {stats.NewStudentsLast30Days + 10} to {stats.NewStudentsLast30Days + 30} new students next month",
+                        ConfidenceScore = 65,
+                        Timeframe = "30 days"
+                    }
+                },
+                AiGeneratedSummary = $"Platform has {stats.TotalStudents} students and {stats.ActiveJobs} active jobs. " +
+                                      $"Student engagement is at {data.StudentEngagementRate:F1}% with {stats.ApplicationSuccessRate:F1}% success rate. " +
+                                      $"Top in-demand skill is {skills.FirstOrDefault().Key} with {skills.FirstOrDefault().Value} job postings.",
+                GeneratedAt = DateTime.UtcNow
+            };
+        }
+
+        private int CalculateHealthScore(AiAnalyticsRepository.PlatformStats stats, Repositories.PlatformAnalyticsData data)
+        {
+            int score = 50;
+            
+            if (data.StudentEngagementRate > 70) score += 20;
+            else if (data.StudentEngagementRate > 50) score += 15;
+            else if (data.StudentEngagementRate > 30) score += 10;
+            else if (data.StudentEngagementRate > 10) score += 5;
+            
+            if (stats.ApplicationSuccessRate > 30) score += 20;
+            else if (stats.ApplicationSuccessRate > 20) score += 15;
+            else if (stats.ApplicationSuccessRate > 10) score += 10;
+            else if (stats.ApplicationSuccessRate > 5) score += 5;
+            
+            if (stats.NewStudentsLast30Days > 100) score += 10;
+            else if (stats.NewStudentsLast30Days > 50) score += 7;
+            else if (stats.NewStudentsLast30Days > 20) score += 5;
+            else if (stats.NewStudentsLast30Days > 10) score += 3;
+            
+            if (stats.StuckPendingCompanies == 0) score += 10;
+            else if (stats.StuckPendingCompanies < 3) score += 5;
+            
+            var ratio = stats.ActiveJobs > 0 ? (double)stats.TotalStudents / stats.ActiveJobs : 0;
+            if (ratio >= 3 && ratio <= 10) score += 10;
+            else if (ratio >= 2 && ratio <= 15) score += 5;
+            
+            if (stats.ActiveJobs > 100) score += 10;
+            else if (stats.ActiveJobs > 50) score += 7;
+            else if (stats.ActiveJobs > 20) score += 5;
+            else if (stats.ActiveJobs > 10) score += 3;
+            
+            if (stats.AverageApplicantsPerJob > 20) score += 10;
+            else if (stats.AverageApplicantsPerJob > 10) score += 7;
+            else if (stats.AverageApplicantsPerJob > 5) score += 5;
+            else if (stats.AverageApplicantsPerJob > 2) score += 3;
+            
+            var growthRate = stats.NewStudentsLast30Days > 0 ?
+                (stats.NewStudentsLast30Days / (double)Math.Max(1, stats.TotalStudents - stats.NewStudentsLast30Days)) * 100 : 0;
+            if (growthRate > 20) score += 10;
+            else if (growthRate > 10) score += 7;
+            else if (growthRate > 5) score += 5;
+            else if (growthRate > 2) score += 3;
+            
+            return Math.Min(100, Math.Max(0, score));
         }
 
         private int? GetCurrentUserId()
